@@ -35,6 +35,36 @@ bochs最大的缺陷就在于没有内嵌gdbstub, 需要用户自己把它编译
 还好后来在cygwin下使用mingw编译成功，如果读者想用，我可以直接把编译成功的binary上传，下载之后应该可以直接使用。
 
 \subsection{cygwin下编译bochs with gdbstub}
+前面提到bochs提供的binary是不支持gdbstub的，如果希望编译按照这个说明来实现。它依赖于一些常用工具，我们务必在运行configure脚本之前将它们装好。这些工具的列表在这，相信用过cygwin的朋友们都会安装。
+\begin{comptactenum}
+
+\end{compactenum}
+
+\begin{lstlisting}[language=bash]
+CC=''/usr/bin/i686-pc-mingw32-gcc''
+CXX=''/usr/bin/i686-pc-mingw32-g++''
+CFLAGS=''-static-libstdc++ -static-libgcc -O3''
+CXXFLAGS=$CFLAGS
+
+export CC
+export CXX
+export CFLAGS
+export CXXFLAGS
+
+./configure  --enable-ne2000 \
+    --enable-all-optimizations \
+    --enable-cpu-level=6 \
+    --enable-x86-64 \
+    --enable-pci \
+    --enable-clgd54xx \
+    --enable-usb \
+    --enable-usb-ohci \
+    --enable-e1000 \
+    --enable-show-ips \
+    --enable-gdb-stub \
+    --with-win32 --with-rfb --with-nogui
+# --enable-sb16
+\end{lstlisting}
 \section{操作系统}
 从开始接触Linux，作者的工作一般都是使用笔记本连接远程开发机的。
 这导致一直都不适应linux的桌面环境，如果非用不可的话，作者宁愿安装一个虚拟机然后用putty链接，就好象链接远程机器一样。

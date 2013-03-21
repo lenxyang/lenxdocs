@@ -140,12 +140,30 @@ clean:
     rm -f hello
 .PHONY: clean
 \end{lstlisting}
+其实make可以更智能，它升值可以根据依赖推断出依赖项是如何产生的。Linux的Makefile利用了这样的技巧，还是用墙面的例子解释吧。
+\begin{lstlisting}[language=make]
+CFLAGS = -c
+
+%.o : %c
+  gcc ${CFLAGS} %< -o $@
+
+default: hello
+hello : hello.o lib.o
+   ld  ${LDFLAGS} hello.o lib.o -o hello
+
+clean:
+    rm -f *.o
+    rm -f hello
+.PHONY: clean
+\end{lstlisting}
+发现有什么却别了吗？脚本当中没有包含hello.o和lib.o是如何生成的，但这已经足够了，make会根据文件名来反响猜测它可能是如何生成的。
 
 \subsection{Makefile函数调用}
 如果单单认为Makefile就是这么简单的话，恐怕会让大家失望。
 如果只是这么简单，我们也就不用单独开辟一章来介绍Linux Kernel的Makefile了。
 实际上Makefile包含非常多的强大功能，对于很多支持多平台的软件来说，这些功能都是不可或缺的。
 接下来我们介绍函数调用。
+
 \subsection{Makefile流程控制}
 大部分介绍编程语言书籍来都倾向于将流程控制放在函数之前，这这里我们却不得不成为一个例外。
 原因很简单，Makefile的流程控制是基于函数调用的，它并没有关键字if，或是关键字for，
@@ -216,3 +234,37 @@ cc_binary(name = 'exec',
 \subsection{其他技巧}
 \subsubsection{--dry-run}
 make提供了一个参数--dry-run，顾名思义它仅仅打印步骤去并执行任何的生成目标的指令。用它来观察Makefile的行为非常好用，尤其是在阅读复杂的Makefile的时候。
+
+\subsubsection{verbose}
+verbose这个词用过linux的人一定非常熟，基本上所有的shell命令都有一个-v选项，它会把很多信息打出来。kbuild Makefile也提供了这样的功能，它的实现非常简单，但却值得看一下。
+
+首先需要大家明白的一点是@， 它是常用的shell技巧，在make执行的时候如果不希望shell显示当前正在运行的命令就在前面加上@。例如
+\begin{lstlisting}[language=make]
+@echo "abc"
+\end{lstlisting}
+如果加上@, 他的输出就是
+\begin{lstlisting}[language=bash]
+"abc"
+\end{lstlisting}
+如果不加上@, 那么他的输出就是
+\begin{lstlisting}[language=bash]
+echo "abc"
+"abc"
+\end{lstlisting}
+
+在顶层Makefile当中，你会发现下面一段代码
+\begin{lstlisting}[language=make]
+ifeq ($(KBUILD_VERBOSE),1)
+  quiet =
+  Q =
+else
+  quiet=quiet_
+  Q = @
+endif
+\end{lstlisting}
+在其他地方，如果Makefile用到了shell命令一定会写成
+
+\begin{lstlisting}[language=make]
+%.s: %.c scripts FORCE
+    $(Q)$(MAKE) $(build)=$(@D) \$@
+\end{lstlisting}

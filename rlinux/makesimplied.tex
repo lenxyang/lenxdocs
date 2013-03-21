@@ -76,39 +76,6 @@ cc-option = $(shell if $(CC) $(CFLAGS) $(1) \
                echo ``$(1)''; else echo ``$(2)''; fi ;)
 
 \end{lstlisting}
-\subsection{一些技巧}
-上面介绍的是kbuild Makefile的整体，除了这些之外，它还用到了很多有趣的技巧。
-\subsubsection{verbose}
-verbose这个词用过linux的人一定非常熟，基本上所有的shell命令都有一个-v选项，它会把很多信息打出来。kbuild Makefile也提供了这样的功能，它的实现非常简单，但却值得看一下。
 
-首先需要大家明白的一点是@， 它是常用的shell技巧，在make执行的时候如果不希望shell显示当前正在运行的命令就在前面加上@。例如
-\begin{lstlisting}[language=make]
-@echo "abc"
-\end{lstlisting}
-如果加上@, 他的输出就是
-\begin{lstlisting}[language=bash]
-"abc"
-\end{lstlisting}
-如果不加上@, 那么他的输出就是
-\begin{lstlisting}[language=bash]
-echo "abc"
-"abc"
-\end{lstlisting}
 
-在顶层Makefile当中，你会发现下面一段代码
-\begin{lstlisting}[language=make]
-ifeq ($(KBUILD_VERBOSE),1)
-  quiet =
-  Q =
-else
-  quiet=quiet_
-  Q = @
-endif
-\end{lstlisting}
-在其他地方，如果Makefile用到了shell命令一定会写成
-
-\begin{lstlisting}[language=make]
-%.s: %.c scripts FORCE
-    $(Q)$(MAKE) $(build)=$(@D) \$@
-\end{lstlisting}
 
