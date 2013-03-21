@@ -1,0 +1,84 @@
+\section{kbuild核心流程}
+当用户在linux源代码目录下执行make的时候，构建系统就开始运作了。最开始执行的就是源代码根目录下的Makefile，linux的文档管它叫'top level Makefile'。
+简单的说它包括如下共呢
+\begin{compactenum}
+\item 配置内核并产生.config文件
+\item 生成include/linux/version.h文件
+\item 根据目标arch的类型建立include/asm软链接
+\item 更新所有的依赖
+\item 递归的便利所有在init-*, core* drivers-* net-* libs*并build所有目标
+\item 将生成的文件链接成vmlinux并存放在源代码根目录下
+\item 最后准备用于安装的文件
+\end{compactenum}
+
+\subsection{变量初始化}
+\subsubsection{LDFLAGS}
+它是通用链接选项，所有的ld命令都会是用它
+\subsubsection{LDFLAGS\_MODULE}
+此选项用于生成可加载模块.ko的ld命令
+\subsubsection{LDFLAGS\_vmlinux}
+顾名思义，它是用于链接vmlinux的选项
+\subsubsection{OBJCOPYFLAGS}
+某些链接器不支持binary格式，此时可以通过objcopy命令来实现。例如
+\begin{lstlisting}[language=bash]
+OBJCOPYFLAGS := -O binary
+# arch/i386/boot/Makefile
+$(obj)/image: vmlinux FORCE
+    $(call if_changed,objcopy)
+\end{lstlisting}
+\subsubsection{AFLAGS}
+汇编程序的通用选项
+\subsubsection{CFLAGS}
+通用的C语言编译选项
+\subsubsection{CFLAGS\_KERNEL}
+生成内核的通用编译选项
+\subsubsection{CFLAGS\_MODULE}
+生成可加载模块的编译选项
+\subsection{递归编译所有subdir}
+真正的构建开始了，top level Makefile会按照一定次序递归访问subdir下的Makefile。这些子目录通过以下几个变量定义:
+head-y、init-y、core-y、libs-y、drivers-y、net-y
+\begin{compactenum}
+\item head-y: 所有需要首先放到vmlinux的目标
+\item libs-y: 所有用来生成lib.a的目录
+\end{compactenum}
+这些变量的定义分成两个部分，一部分在top level Makefile, 它定义了所有与平台架构无关的目录。另外一部分与平台相关的则定义在arch/\$\{ARCH\}/Makefile当中。
+\begin{lstlisting}[language=make]
+core-y += arch/i386/kernel/
+libs-y += arch/i386/lib
+drivers-$(CONFIG_OPROFILE)  += arch/sparc64/oprofile/
+\end{lstlisting}
+
+\subsubsection{链接文件的顺序}
+这里顺便提一句，对于.o文件来说，顺序不是一个太重要的事情。但对于.lib文件来说，顺序就非常重要了。举个例子，假设我们有3个上述a, b, c分别定义在库文件a.lib, b.lib和c.lib当中。它们的调用关系为a调用b, b调用c。也可以用依赖关系来表达它们: a依赖b， b依赖c。
+如果我们希望将a.lib，b.lib，c.lib链接成为一个可执行程序，那么必须以a b c的顺序出现
+\begin{lstlisting}{language=bash}
+  ld a.lib b.lib c.lib -o exe
+\end{lstlisting}
+如果以其他顺序出现，那么ld会报undefined symbol错误。这是因为ld总是认为找不到的符号会在后面的文件出现，它是不会向前查找的。
+\subsection{生成vmlinux}
+
+除了构建流程之外，kbuild还有clean流程，这部分比较简单，大家可以参考文档。
+
+
+\section{Linux目录结构}
+\dirtree{%
+.1 rlinux.
+.2 arch.
+.3 i386.
+.3 mm.
+.3 kernel.
+.3 mach-default.
+.3 boot.
+.2 drivers.
+.2 fs.
+.2 include.
+.3 asm.
+.3 asm-i386.
+.3 linux.
+.2 init.
+.2 kernel.
+.3 timers.
+.2 lib.
+.2 mm.
+.2 scripts.
+}

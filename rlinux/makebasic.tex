@@ -1,0 +1,84 @@
+\section{Makefile基础}
+Makefile最基本的单位是目标，最基本的关系是依赖。一个项目可以有多个目标组成，其中每一个目标又依赖于很多个.o文件。每一个.o文件依赖于.c文件。根据这些依赖关系可以支撑一个森林(多棵树)。如果希望生成其中任何一个目标只要从树顶开始进行后序编译即可。
+\subsection{Makefile基础}
+接下来我们从一个简单的设计多文件的程序来更具体的理解Makefile的工作方式。
+\begin{lstlisting}[language=make]
+CFLAGS = -c
+default: hello
+hello : hello.o lib.o
+   ld  ${LDFLAGS} hello.o lib.o -o hello
+
+hello.o: hello.c
+   gcc ${CFLAGS} hello.c -o hello.o
+
+lib.o: lib.c
+   gcc ${CFLAGS} lib.c -o lib.o
+\end{lstlisting}
+
+正如之前提到的，这段代码可以用森林表示，但这森林很小仅仅有一个小树：
+
+
+\qtreecentertrue 
+\Tree [.default [.hello [.hello.o \textit{gcc hello.c -o hello.o} ] 
+                        [.lib.o \textit{gcc lib.c -o lib.o} ] ] ]
+
+
+Makefile的内部实现基本上也是以树为组织形式，而后通过后续遍历。
+按照先生成依赖项而后生成自身的顺序完成整个工程的构建。
+
+
+此外，make还有一个很好的特性：它会监控每一个依赖项及target的变化。如果其中任何一个改变，那么所有依赖于它的项（包括直接依赖及间接依赖）都会被重新生成。这个特性很好，尤其是当项目设计非常多的文件的时候，如果一个文件变化导致整个项目重新build那就太耗时了。
+\subsection{伪目标}
+实际上Makefile会将所有的target及依赖项当作文件，如果目标不是一个文件会怎么样呢？make会把它当作文件并理所当然的认为它被存在是因为没有被生成，因此这个目标总是被执行。最常见的伪目标是clean。例如给上面的Makefile加上clean:
+\begin{lstlisting}[language=make]
+CFLAGS = -c
+default: hello
+hello : hello.o lib.o
+   ld  ${LDFLAGS} hello.o lib.o -o hello
+
+hello.o: hello.c
+   gcc ${CFLAGS} hello.c -o hello.o
+
+lib.o: lib.c
+   gcc ${CFLAGS} lib.c -o lib.o
+
+clean:
+    rm -f *.o
+    rm -f hello
+.PHONY: clean
+\end{lstlisting}
+每当我们运行make clean的时候，两条rm命令都会执行，因为clean是不存的。make提供了一个特殊的指令叫做.PHONY，它可以用于表示伪目标，但一般不会这么做。
+
+Makefile的内部实现基本上也是以树为组织形式，而后通过后续遍历。
+按照先生成依赖项而后生成自身的顺序完成整个工程的构建。
+
+此外，make还有一个很好的特性：它会监控每一个依赖项及target的变化。如果其中任何一个改变，那么所有依赖于它的项（包括直接依赖及间接依赖）都会被重新生成。这个特性很好，尤其是当项目设计非常多的文件的时候，如果一个文件变化导致整个项目重新build那就太耗时了。
+\subsection{Makefile变量}
+和众多脚本语言一样，Makefile怎么可能没有变量呢。上面的例子就有两个变量\$\{LDFLAGS\}和变量\$\{CFLAGS\}。
+变量定义的格式比较直接一个赋值运算符就可以搞定了。
+
+GNU Make当中包含两种复制运算符“=”和“:=”。这两个运算符还是有一些差异的。赋值符号“:=“会立刻计算右边的字符串并赋值给变量。而运算符“=”则会仅仅保存表达式，在用到变量的一刻，make程序会计算(evaluate)它的值并加入到运算当中。我们通过一个例子来了解一下他们的不同。这非常重要，因为Linux的Makefile当中这种技巧用了很多。
+
+\subsection{Makefile函数调用}
+如果单单认为Makefile就是这么简单的话，恐怕会让大家失望。
+如果只是这么简单，我们也就不用单独开辟一章来介绍Linux Kernel的Makefile了。
+实际上Makefile包含非常多的强大功能，对于很多支持多平台的软件来说，这些功能都是不可或缺的。
+接下来我们介绍函数调用。
+\subsection{Makefile流程控制}
+大部分介绍编程语言书籍来都倾向于将流程控制放在函数之前，这这里我们却不得不成为一个例外。
+原因很简单，Makefile的流程控制是基于函数调用的，它并没有关键字if，或是关键字for，
+它拥有的是两个函数if和foreach。
+这两个函数是Makefile流程控制的基础。
+\subsubsection{if}
+\subsubsection{foreach}
+还是通过例子来学习它吧
+\begin{lstlisting}[language=make]
+srcs := a.c b.c c.c
+files := $(foreach,n,${srcs},$(shell gcc -c ${n} -o ${n}.o))
+\end{lstlisting}
+函数for有4个参数
+\begin{itemize}
+\item n 用于枚举，代表一次迭代从参数srcs当中取出的值
+\item \$\{srcs\} 用于枚举的对象
+\item 循环体 \$(shell gcc \-c \$\{n\} \-o \$\{n\}.o) 
+\end{itemize}

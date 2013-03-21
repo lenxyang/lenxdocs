@@ -1,0 +1,91 @@
+\usepackage{fontspec,xunicode,xltxtra}
+\usepackage{listings}
+\usepackage{color}
+\usepackage{paralist}
+\usepackage{qtree}
+\usepackage{dirtree}
+\usepackage[a5paper]{geometry}
+\usepackage[colorlinks=true,linkcolor=blue]{hyperref}
+
+\XeTeXlinebreaklocale ``zh''
+\XeTeXlinebreakskip = 0pt plus 1pt minus 0.1pt
+\newfontfamily\song{SimSun}
+\newfontfamily\hei{SimHei}
+%\newfontfamily\kai{KaiTi}
+%\newfontfamily\fsong{FangSong}
+%\newfontfamily\nsong{NSimSun}
+\newfontfamily\mshei{Microsoft YaHei}
+\setmainfont{SimSun}
+
+
+\definecolor{commentcolor}{rgb}{0, 0.6, 0}
+\definecolor{stringcolor}{rgb}{0.8, 0.3, 0.0}
+\definecolor{linenumcolor}{rgb}{0.6, 0.6, 0.6}
+
+\lstdefinestyle{gnuasmcode}{
+  basicstyle=\small,
+  belowcaptionskip=1\baselineskip,
+  frame=none,
+  xleftmargin=\parindent,
+  language=[Motorola68k]Assembler,
+  basicstyle=\footnotesize\ttfamily,
+  showstringspaces=false,
+  commentstyle=\color{commentcolor},
+  stringstyle=\color{stringcolor},
+  keywordstyle=\color{blue},
+  % identifierstyle=\color{blue},
+  numbers=left, 
+  numbersep=12pt,
+  numberstyle=\tiny\color{linenumcolor},
+}
+
+\lstdefinestyle{linuxc}{
+  basicstyle=\small,
+  belowcaptionskip=1\baselineskip,
+  frame=none,
+  xleftmargin=\parindent,
+  language=C,
+  basicstyle=\footnotesize\ttfamily,
+  showstringspaces=false,
+  commentstyle=\color{commentcolor},
+  stringstyle=\color{stringcolor},
+  keywordstyle=\color{blue},
+  % keywordstyle=\bfseries\color{green!40!black},
+  % identifierstyle=\color{blue},
+  numbers=left, 
+  numbersep=12pt,
+  numberstyle=\tiny\color{linenumcolor},
+}
+
+\lstdefinestyle{mybash}{
+  belowcaptionskip=1\baselineskip,
+  frame=none,
+  xleftmargin=\parindent,
+  language=bash,
+  basicstyle=\footnotesize\ttfamily,
+  showstringspaces=false,
+  commentstyle=\color{commentcolor},
+  stringstyle=\color{stringcolor},
+  % keywordstyle=\bfseries\color{green!40!black},
+  % identifierstyle=\color{blue},
+}
+
+
+
+\lstdefinestyle{mymake}{
+  belowcaptionskip=1\baselineskip,
+  frame=none,
+  xleftmargin=\parindent,
+  language=make,
+  basicstyle=\footnotesize\ttfamily,
+  showstringspaces=false,
+  commentstyle=\color{commentcolor},
+  stringstyle=\color{stringcolor},
+  % keywordstyle=\bfseries\color{green!40!black},
+  % identifierstyle=\color{blue},
+}
+
+\lstset{language=[Motorola68k]Assembler, escapechar=@,style=gnuasmcode}
+\lstset{language=C,escapechar=@,style=linuxc}
+\lstset{language=bash,escapechar=@,style=mybash}
+\lstset{language=make,escapechar=none,style=mymake}

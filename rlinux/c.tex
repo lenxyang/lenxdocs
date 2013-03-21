@@ -1,0 +1,42 @@
+\documentclass[11pt]{article}
+
+\XeTeXlinebreaklocale ``zh''
+\XeTeXlinebreakskip = 0pt plus 1pt minus 0.1pt
+
+\usepackage{fontspec,xunicode,xltxtra}
+\newfontfamily\song{SimSun}
+\newfontfamily\kai{KaiTi}
+\newfontfamily\hei{SimHei}
+\newfontfamily\fsong{FangSong}
+\newfontfamily\mshei{Microsoft YaHei}
+\newfontfamily\nsong{NSimSun}
+\setmainfont{SimSun}
+
+\begin{document}
+ 
+\title{\mshei 字体列表}
+\author{\fsong 杨磊}
+\date{}
+ 
+\maketitle
+ 
+\section{简介}
+\section{字体列表} 
+\begin{table}[htbp]
+\caption{字体列表}
+\centering
+\begin{tabular}{|l|c|r|}
+\hline
+\hei 字体 & \hei 命令 & \hei 字体效果 \\
+\hline
+\kai 宋体 & \verb+\song+ & \song 宋体 \\
+\kai 楷体 & \verb+\kai+ & \kai 楷体 \\
+\kai 黑体 & \verb+\hei+ & \hei 黑体 \\
+\kai 仿宋体 & \verb+\fsong+ & \fsong 仿宋体 \\
+\kai 新宋体 & \verb+\nsong+ & \nsong 新宋体 \\
+\kai 微软雅黑 & \verb+\mshei+ & \mshei 微软雅黑 \\
+\hline
+\end{tabular}
+\end{table}
+ 
+\end{document}

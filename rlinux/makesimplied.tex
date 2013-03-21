@@ -1,0 +1,143 @@
+\section{简化kbuild}
+本着山寨的精神，Linux的Makefile也是需要改造一把的。不是为了让他变得更好，只是为了让它变得更简单，更容易理解。下面的章节将介绍kbuild系统的如何实现，当然那些高级配置部分的实现被省去了，作为一个仅仅支持x86的简陋操作系统，实在不需要配置啊。
+
+\subsection{生成built-in}
+kbuild通过脚本的方式将所有的obj-y文件通过\${LD} \-r当方式连接成为built\-in.o文件。
+之后built\-in.o会被链接成为vmlinux文件。
+有一点需要注意的时，obj\-y当中的文件是可以重复出现的，但仅仅第一次出现是有效的。
+不过前面提到过这些文件对应的源代码文件有是汇编程序也有可能是C程序，它们是如何确定源文件路径及名称的。又是如何确定编译选项的？
+下面的代码会给你答案。
+
+\section{稍许改造}
+\subsection{sysmap}
+为了调试方便Linux在生成玩vmlinux之后，还通过nm命令生成了一张记录所有符号地址的表保存在文件当中。我们不打算这么做，毕竟去查表也是挺复杂的一件事情，为了方便起见我们还是使用gdb调试。因为我们在链接阶段生成两个版本的vmlinux。一个包含调试信息，它仅仅用来帮助调试器识别符号及变量。另外一个文件不太调试信息它将被写入到磁盘当中作为操作系统运行。无论生成那种文件，在编译阶段都通过选项-g使其包含调试信息。在链接不包含调试信息的版本是用 ld -s(或者--strip-all) 生成即可。--strip-all选项会取出所有符号相关的信息。
+\subsection{输出路径}
+很多年以前开始使用VC，它倾向于将生成的代码放在一个名为debug(或者release)的目录下以便于管理。
+后来Visual Studio用的多了，发现这并不是一个很好的特性。
+随着Solution的复杂度提升，更多的项目加入到了其中，每一个项目都有自己一个debug和release目录。
+当我看到chromium的项目组织的时候，我非常的钦佩，我认为那是更好的输出文件组织形式。
+
+\section{Linux构建系统介绍}
+\subsection{kbuild Makefile基本语法}
+Linux Kernel的Makefile通过变量来记录那些文件需要build以及文件作为什么的组成部分。Linux Kerne的Makefiles在官方文档上被曾作kbuild Makefiles，我们也称他为kbuild Makefiles。
+大致上，内核的不表包括两种built-in以及module。
+build-in代表的是整个内核，如果文件需要编译进到vmlinux这个ELF文件，那么通常它会在Makefile当中写作
+ \begin{lstlisting}[language=make]
+  obj-y += foo.o
+ \end{lstlisting}
+否则话可能写作
+ \begin{lstlisting}[language=make]
+  obj-m += foo.o
+ \end{lstlisting}
+当然还有一种情况就是根据用户的配置进行生成
+ \begin{lstlisting}[language=make]
+  obj-${CONFIG_FOO} += foo.o
+ \end{lstlisting}
+如果CONFIG\_FOO被配置成y, 那么他就被直接编译到built\-in当中，如果配置为m，则别生成为可加载的内容。除了obj-m和obj-y两个目标之外，还有目标lib-y，这个目标下的所有文件会被用来生成静态库lib.a。在最终的链接阶段它会被链接进vmlinux。
+此外lib.a还会被发布供更多的应用程序使用。
+
+\subsubsection{编译选项}
+编译选项的管理使用与.o文件类似的管理方式。
+
+
+此外KBUILD Makefile还提供了仅仅针对文件的编译方法。
+\begin{lstlisting}[language=make]
+ CFLAGS_aha152x.o = -DAHA152X_STAT -DAUTOCONF
+\end{lstlisting}
+这条CFLAGS仅仅用于当前subdir下的文件aha152x.o的生成。
+
+\subsection{kbuild Commands}
+kbuild系统中提供了很有常用的宏，链接它们对于阅读Linux Makefile非常有帮助。
+\subsubsection{if\_changed}
+可能读者会非常疑惑，前面提到，按道理Makefile会自己监控依赖项。如果依赖项变化了，Makefile会自己发现并重新生成直接依赖或者间接依赖次项的内容。那为什么还需要if\_chaneged这种功能呢？由GNU make自己来作者事情不是更好吗。
+这是由于Linux的Makefile并没有按照最经典的依赖方式组织代码，这就造成了make无法监控更新，不得已需要有一个if\_changed这样的函数。
+if\_changed有一个隐含约束，他检查的内容必须保存在变量\$\{targets\}当中。
+\begin{lstlisting}[language=make]
+ target: source(s) FORCE
+     $(call if_changed,ld/objcopy/gzip)
+\end{lstlisting}
+
+Linux支持多种架构同时也支持多种编译器，但不同的编译器很多选项是不一样的，某些不同的编译器支持也不同。kbuild提供了一组函数用于判断当前使用的编译器是否支持指定选项。
+这些函数包括cc\-option、cc\-option\-yn、cc\-option\-align、cc\-version等等。
+在很多Makefile当中都可以找到使用它们的例子，如arch/i386/Makefile。
+\begin{lstlisting}[language=make]
+cflags-y += $(call cc-option,-march=pentium-mmx,-march=i586)
+\end{lstlisting}
+上面的代码会判断编译器是否支持“-march=pentium-mmx“，如果支持则使用。如果不支持就用“-march=i586”选项代替。
+
+后面我们会尝试实现一个类似的Build系统，但由于我们只用GCC，这些函数我们就不用啦。为了方便读者自己阅读Linux的代码，我们在这里还是要顺便说明一下。
+
+
+它们的实现在根目录的Makefile当中，基本都是通过shell命令完成的，如cc-option的实现如下。
+\begin{lstlisting}[language=make]
+cc-option = $(shell if $(CC) $(CFLAGS) $(1) \
+               -S -o /dev/null -xc /dev/null \
+               > /dev/null 2>&1; then \
+               echo ``$(1)''; else echo ``$(2)''; fi ;)
+
+\end{lstlisting}
+\subsection{一些技巧}
+上面介绍的是kbuild Makefile的整体，除了这些之外，它还用到了很多有趣的技巧。
+\subsubsection{verbose}
+verbose这个词用过linux的人一定非常熟，基本上所有的shell命令都有一个-v选项，它会把很多信息打出来。kbuild Makefile也提供了这样的功能，它的实现非常简单，但却值得看一下。
+
+首先需要大家明白的一点是@， 它是常用的shell技巧，在make执行的时候如果不希望shell显示当前正在运行的命令就在前面加上@。例如
+\begin{lstlisting}[language=make]
+@echo "abc"
+\end{lstlisting}
+如果加上@, 他的输出就是
+\begin{lstlisting}[language=bash]
+"abc"
+\end{lstlisting}
+如果不加上@, 那么他的输出就是
+\begin{lstlisting}[language=bash]
+echo "abc"
+"abc"
+\end{lstlisting}
+
+在顶层Makefile当中，你会发现下面一段代码
+\begin{lstlisting}[language=make]
+ifeq ($(KBUILD_VERBOSE),1)
+  quiet =
+  Q =
+else
+  quiet=quiet_
+  Q = @
+endif
+\end{lstlisting}
+在其他地方，如果Makefile用到了shell命令一定会写成
+
+\begin{lstlisting}[language=make]
+%.s: %.c scripts FORCE
+    $(Q)$(MAKE) $(build)=$(@D) \$@
+\end{lstlisting}
+\subsection{强制重新生成}
+在kbuild Makefiles当中，你可能经常会发现一个依赖项FORCE, 它其实是用来强制重新生成的。如果加上这个依赖项无论其他依赖上如何，目标都将被重新生成。例如在顶层Makefile当中。
+\begin{lstlisting}[language=make]
+include/linux/version.h: $(srctree)/Makefile FORCE
+        $(call filechk,version.h)
+\end{lstlisting}
+无论何时make执行到它都一定会执行，那么FORCE是如何实现的呢，简单到难以置信，它是一个伪目标。
+\begin{lstlisting}[language=make]
+FORCE:
+
+\end{lstlisting}
+它定义在顶层Makefile的最后一行。
+
+\subsection{默认规则}
+\begin{lstlisting}[language=make]
+%.s: %.c scripts FORCE
+  $(Q)$(MAKE) $(build)=$(@D) $@
+%.i: %.c scripts FORCE
+  $(Q)$(MAKE) $(build)=$(@D) $@
+%.o: %.c scripts FORCE
+  $(Q)$(MAKE) $(build)=$(@D) $@
+%/:      scripts prepare FORCE
+  $(Q)$(MAKE) KBUILD_MODULES=$(if $(CONFIG_MODULES),1) $(build)=$(@D)
+%.lst: %.c scripts FORCE
+  $(Q)$(MAKE) $(build)=$(@D) $@
+%.s: %.S scripts FORCE
+  $(Q)$(MAKE) $(build)=$(@D) $@
+%.o: %.S scripts FORCE
+  $(Q)$(MAKE) $(build)=$(@D) $@
+\end{lstlisting}

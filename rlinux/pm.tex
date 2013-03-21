@@ -1,0 +1,177 @@
+\chapter{x86保护模式}
+\section{保护模式基本概念}
+为了讲解后面Linux的代码，我们需要首先熟悉一下保护模式的基本概念。
+为了简化汇编代码对这些内容的影响，我们尽量使用C代码来展示。
+就在刚才经过我们艰苦卓绝的努力，bootsect已经可以支持ELF文件了。
+现阶段它最大的好处解释，我们可以摆脱单纯的汇编而使用C语言进行编程了。
+这绝对是一个生产力的巨大飞跃。
+
+\section{最简单的保护模式程序}
+
+\section{进入保护模式}
+加下来我们就要在自己的内核当中添加进入保护模式的代码了。很不幸的是它是使用汇编写的。
+这当然是有原因的，理解这个原因是非常重要的。
+在保护模式下，程序有了4G的寻址空间（其实这个问题比较复杂，很难一两句说清楚，在内存管理部分我们再详细的讲）。
+Linux内核将4G空间划分成了两个部分，用户控件（0G～3G）及内核空间（3G～4G）。vmlinux在加载的时候其实并不位于3G～4G空间之上。
+原因包括多个：首先PC机并未启动分页机制，它能访问的是物理内存，而无力内存有没有4G很难说。第二及时真的有4G内存，在进入保护模式之前，16位的程序也没有办法访问到这些物理内存。
+
+因此Linux采用了一个很精巧的办法，将vmlinux加载到低端内存。再启动分页机制后将它映射到高端内存上。这对C程序来说绝对是个挑战，因为从链接的时刻各个符号的地址已经确定了，如果要写两个模式下运行的程序，每看到一个符号叫要想想现在处于什么模式，究竟是以物理内存还是用虚拟内存的方式访问这个符号。如果是以物理内存的方式访问，还要进行指针运行而后在进行类型转换，想想都头大。
+
+简单的做法是写一段汇编代码，这段代码之后就进入分页模式，C程序向怎么写就怎么写；再次之前就要讲过一些运算了，不过这段代码比较短，整体还是可以接受的。由于进入内核之前必须先执行这段代码，因此这段代码的名字就叫做head.S（完整路径是arch/i386/kernel/head.S）。我们的代码做了很大简化，感兴趣的同学可以对比，具体代码如下:
+\begin{lstlisting}
+
+.text
+
+#include <asm/cache.h>
+#include <asm/linkage.h>
+#include <asm/page.h>
+	
+ENTRY(startup_32)
+	cld
+	lgdt	boot_gdt_descr - __PAGE_OFFSET
+	movl	$(__BOOT_DS), %eax
+	movl	%eax, %ds
+	movl	%eax, %es
+	movl	%eax, %fs
+	movl	%eax, %gsls
+
+	movl %cr0,%eax
+	orl $0x80000000,%eax
+	movl %eax,%cr0          /* ..and set paging (PG) bit */
+	ljmp $__BOOT_CS,$1f
+1:
+	/* Set up the stack pointer */
+	lss stack_start,%esp
+
+	/*
+	 * BSS section
+	 */
+	.section ".bss.page_aligned","w"
+ENTRY(swapper_pg_dir)
+        .fill 1024,4,0
+ENTRY(empty_zero_page)
+	.fill 4096,1,0
+
+/*
+ * Real beginning of normal "text" segment
+ */
+ENTRY(stext)
+ENTRY(_stext)
+	
+	
+	.data
+ENTRY(stack_start)
+        .long init_thread_union+THREAD_SIZE
+	.long __BOOT_DS
+
+ready:	.byte 0
+
+/*
+* The IDT and GDT 'descriptors' are a strange 48-bit object
+* only used by the lidt and lgdt instructions. They are not
+* like usual segment descriptors - they consist of a 16-bit
+* segment size, and 32-bit linear address value:
+*/
+
+	.globl boot_gdt_descr
+	.globl idt_descr
+	.globl cpu_gdt_descr
+        ALIGN
+# early boot GDT descriptor (must use 1:1 address mapping)
+        .word 0            # 32 bit align gdt_desc.address
+boot_gdt_descr:
+	.word __BOOT_DS+7
+	.long boot_gdt_table - __PAGE_OFFSET
+	
+	.word 0               # 32-bit align idt_desc.address
+idt_descr:
+	.word IDT_ENTRIES*8-1 # idt contains 256 entries
+	.long idt_table
+	
+	# boot GDT descriptor (later on used by CPU#0):
+	.word 0               # 32 bit align gdt_desc.address
+cpu_gdt_descr:
+	.word GDT_ENTRIES*8-1
+	.long cpu_gdt_table
+	
+	.fill NR_CPUS-1,8,0   # space for the other GDT descriptors
+	
+
+	/*
+	 * The boot_gdt_table must mirror the equivalent in setup.S and is
+	 * used only for booting.
+	 */
+        .align L1_CACHE_BYTES
+ENTRY(boot_gdt_table)
+        .fill GDT_ENTRY_BOOT_CS,8,0
+        .quad 0x00cf9a000000ffff   /* kernel 4GB code at 0x00000000 */
+        .quad 0x00cf92000000ffff   /* kernel 4GB data at 0x00000000 */
+
+	/*
+	 * The Global Descriptor Table contains 28 quadwords, per-CPU.
+	 */
+        .align PAGE_SIZE_asm
+ENTRY(cpu_gdt_table)
+	.quad 0x0000000000000000   /* NULL descriptor */
+	.quad 0x0000000000000000   /* 0x0b reserved */
+	.quad 0x0000000000000000   /* 0x13 reserved */
+	.quad 0x0000000000000000   /* 0x1b reserved */
+	.quad 0x0000000000000000   /* 0x20 unused */
+	.quad 0x0000000000000000   /* 0x28 unused */
+	.quad 0x0000000000000000   /* 0x33 TLS entry 1 */
+	.quad 0x0000000000000000   /* 0x3b TLS entry 2 */
+	.quad 0x0000000000000000   /* 0x43 TLS entry 3 */
+	.quad 0x0000000000000000   /* 0x4b reserved */
+	.quad 0x0000000000000000   /* 0x53 reserved */
+	.quad 0x0000000000000000   /* 0x5b reserved */
+	
+	.quad 0x00cf9a000000ffff   /* 0x60 kernel 4GB code at 0x00000000 */
+	.quad 0x00cf92000000ffff   /* 0x68 kernel 4GB data at 0x00000000 */
+	.quad 0x00cffa000000ffff   /* 0x73 user 4GB code at 0x00000000 */
+	.quad 0x00cff2000000ffff   /* 0x7b user 4GB data at 0x00000000 */
+	
+	.quad 0x0000000000000000   /* 0x80 TSS descriptor */
+	.quad 0x0000000000000000   /* 0x88 LDT descriptor */
+	
+	/* Segments used for calling PnP BIOS */
+	.quad 0x00c09a0000000000   /* 0x90 32-bit code */
+	.quad 0x00809a0000000000   /* 0x98 16-bit code */
+	.quad 0x0080920000000000   /* 0xa0 16-bit data */
+	.quad 0x0080920000000000   /* 0xa8 16-bit data */
+	.quad 0x0080920000000000   /* 0xb0 16-bit data */
+	/*
+	* The APM segments have byte granularity and their bases
+	* and limits are set at run time.
+	*/
+	.quad 0x00409a0000000000   /* 0xb8 APM CS    code */
+	.quad 0x00009a0000000000   /* 0xc0 APM CS 16 code (16 bit) */
+	.quad 0x0040920000000000   /* 0xc8 APM DS    data */
+	
+	.quad 0x0000000000000000   /* 0xd0 - unused */
+	.quad 0x0000000000000000   /* 0xd8 - unused */
+	.quad 0x0000000000000000   /* 0xe0 - unused */
+	.quad 0x0000000000000000   /* 0xe8 - unused */
+	.quad 0x0000000000000000   /* 0xf0 - unused */
+	.quad 0x0000000000000000   /* 0xf8 - GDT entry 31: double-fault TSS */
+	
+\end{lstlisting}
+这部代码就是Linux进入保护模式的代码，从当中可以看到Linux包含两部分的
+
+当中还是包含很多将来要用的东西的，比如cpu\_gdt\_table。 在系统初始化阶段Linux采用boot\_gdt\_table。在正式启动之后将会切换到cpu\_gdt\_table上来。
+
+好了到现在为止我们的系统已经进入了保护模式，接下来我们逐个初始化操作系统的子系统。
+
+\section{构建新的内核}
+这个程序虽然并不复杂，但它的构建却比一般的程序要复杂的多。因为它内部包含两种模式的代码。16位实模式代码和32位保护模式的代码，如果仅仅生成一个binary文件是非常容易的。但是要生成一个ELF文件就不那么直接了。我们必须寄出链接利器:ldscript。
+
+在默认情况下链接器认为我们只会生成一种arch的代码，这时候只要按照默认的ldscript生成就好了。但是当涉及到两种的架构的时候，我们只能通过ldscript来指定不同架构的代码应该放在那里了。
+
+\subsection{ldscript}
+ldscript非常的容易
+
+\subsection{模仿Linux的机制}
+Linux调用lds并不像我们介绍的那么简单直接，因为它真的做了一些使的代码更容易维护的事情。但为了提高维护性，我们必须提高我们对工具的使用能力才行。
+首先来介绍一下linux使用lds的方式，它并不直接使用lds文件，而是使用一种叫做lds.S的文件之后来生成lds文件，为什么这么作呢，因为linux希望所有的变量都统一的放在一个地方，而不是分散在各地。但是lds是不支持包含C语言的头文件的。但是.S文件支持，即GAS格式的汇编语言文件。
+
+GAS格式的汇编文件有两种.s和.S，这两种文件有一个微小的不同，虽然微小但足够让你崩溃一天。.s和.S的文件都支持gcc或者as进行汇编，但是.s的文件是直接忽略include指令的，是的直接忽略还不报错，让你误以为引入了都文件但实际上没有。如果你在你的汇编程序中用到了某个\#define定义的常量，它也不报语法错误，而是报undefined symbol。这个错误如此具有误导性，以至于我会怀疑C语言通过\#define定义的常量会包含在symbol table当中。但实际上完全不会，它仅仅是没有包含头文件而已，把扩展名换成.S立时所有的问题都没有了。
+
