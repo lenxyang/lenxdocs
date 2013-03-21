@@ -1,0 +1,218 @@
+\section{Makefile基础}
+Makefile最基本的单位是目标，最基本的关系是依赖。一个项目可以有多个目标组成，其中每一个目标又依赖于很多个.o文件。每一个.o文件依赖于.c文件。根据这些依赖关系可以支撑一个森林(多棵树)。如果希望生成其中任何一个目标只要从树顶开始进行后序编译即可。
+\subsection{Makefile基础}
+接下来我们从一个简单的设计多文件的程序来更具体的理解Makefile的工作方式。
+\begin{lstlisting}[language=make]
+CFLAGS = -c
+default: hello
+hello : hello.o lib.o
+   ld  ${LDFLAGS} hello.o lib.o -o hello
+
+hello.o: hello.c
+   gcc ${CFLAGS} hello.c -o hello.o
+
+lib.o: lib.c
+   gcc ${CFLAGS} lib.c -o lib.o
+\end{lstlisting}
+
+正如之前提到的，这段代码可以用森林表示，但这森林很小仅仅有一个小树：
+
+
+\qtreecentertrue 
+\Tree [.default [.hello [.hello.o \textit{gcc hello.c -o hello.o} ] 
+                        [.lib.o \textit{gcc lib.c -o lib.o} ] ] ]
+
+Makefile的内部实现基本上也是以树为组织形式，而后通过后续遍历。
+按照先生成依赖项而后生成自身的顺序完成整个工程的构建。
+
+此外，make还有一个很好的特性：它会监控每一个依赖项及target的变化。如果其中任何一个改变，那么所有依赖于它的项（包括直接依赖及间接依赖）都会被重新生成。这个特性很好，尤其是当项目设计非常多的文件的时候，如果一个文件变化导致整个项目重新build那就太耗时了。
+\subsection{伪目标}
+实际上Makefile会将所有的target及依赖项当作文件，如果目标不是一个文件会怎么样呢？make会把它当作文件并理所当然的认为它被存在是因为没有被生成，因此这个目标总是被执行。最常见的伪目标是clean。例如给上面的Makefile加上clean:
+\begin{lstlisting}[language=make]
+CFLAGS = -c
+default: hello
+hello : hello.o lib.o
+   ld  ${LDFLAGS} hello.o lib.o -o hello
+
+hello.o: hello.c
+   gcc ${CFLAGS} hello.c -o hello.o
+
+lib.o: lib.c
+   gcc ${CFLAGS} lib.c -o lib.o
+
+clean:
+    rm -f *.o
+    rm -f hello
+.PHONY: clean
+\end{lstlisting}
+
+每当我们运行make clean的时候，两条rm命令都会执行，因为clean是不存的。make提供了一个特殊的指令叫做.PHONY，它可以用于表示伪目标，但一般不会这么做。
+
+Makefile的内部实现基本上也是以树为组织形式，而后通过后续遍历。
+按照先生成依赖项而后生成自身的顺序完成整个工程的构建。
+
+此外，make还有一个很好的特性：它会监控每一个依赖项及target的变化。如果其中任何一个改变，那么所有依赖于它的项（包括直接依赖及间接依赖）都会被重新生成。这个特性很好，尤其是当项目设计非常多的文件的时候，如果一个文件变化导致整个项目重新build那就太耗时了。
+
+\subsubsection{强制重新生成}
+在这里顺便给大家介绍一个Linux makefile的小技巧，在kbuild Makefiles当中，你可能经常会发现一个依赖项FORCE, 它其实是用来强制重新生成的。如果加上这个依赖项无论其他依赖上如何，目标都将被重新生成。例如在顶层Makefile当中。
+\begin{lstlisting}[language=make]
+include/linux/version.h: $(srctree)/Makefile FORCE
+        $(call filechk,version.h)
+\end{lstlisting}
+无论何时make执行到它都一定会执行，那么FORCE是如何实现的呢，简单到难以置信，它是一个伪目标。
+\begin{lstlisting}[language=make]
+FORCE:
+
+\end{lstlisting}
+
+\subsection{Makefile变量}
+和众多脚本语言一样，Makefile怎么可能没有变量呢。上面的例子就有两个变量\$\{LDFLAGS\}和变量\$\{CFLAGS\}。
+变量定义的格式比较直接一个赋值运算符就可以搞定了。
+
+
+\subsubsection{赋值运算}
+GNU Make当中包含两种复制运算符“=”和“:=”。这两个运算符还是有一些差异的。赋值符号“:=“会立刻计算右边的字符串并赋值给变量。而运算符“=”则会仅仅保存表达式，在用到变量的一刻，make程序会计算(evaluate)它的值并加入到运算当中。我们通过一个例子来了解一下他们的不同。这非常重要，因为Linux的Makefile当中这种技巧用了很多。我们还是用个简单的例子给大家一个直观的感受。这个例子设计多个Makefile。
+
+\begin{lstlisting}[language=make]
+cur  =  target1
+v1   = ``current: ${cur}''
+v2  := ``current: ${cur}''
+
+cur=target2
+v3 = ${v1}
+v4 = ${v2}
+
+default: ${target1} ${target2}
+        @echo  ${v3}
+        @echo  ${v4}
+\end{lstlisting}
+
+他的结果是
+\begin{lstlisting}[language=bash]
+current: target2
+current: target1
+\end{lstlisting}
+从结果可以看到在cur的值改变以后v1的值改变了，但是v2的值没有变。
+
+\subsubsection{导出变量}
+在涉及到多个Makefile协同工作的时候，经常要在多个Makefile之间共享变量。导出变量是共享变量的常用方法，这种方法尤其是用于导出常数，比如LDFLAGS, CFLAGS，CFLAG\_KERNEL这样的通用编译选项，都是用这种方法的，具体格式为:
+\begin{lstlisting}[language=make]
+CFLAGS  =  ....
+LDFLAGS =  ....
+export CFLAGS LDFLAGS CFLAGS_KERNEL ...
+\end{lstlisting}
+
+\subsection{Automatic Variables}
+大家注意到在每条规则下面都写了对应的生成指令，其实还有更好的方法。
+make提供一些特殊变量，Automatic Variables是其中一种，下面列出几个我们用到的变量，如果读者想进一步了解可以参考GNU Make的手册。
+\begin{compactenum}
+\item \$@    当前规则的目标文件名
+\item \$<    当前对则的第一个依赖项
+\item \$?    当前对则的所有依赖项
+\item \$(@D) 当前规则文件名当中的目录部分
+\end{compactenum}
+知道这几个特殊变灵之后相信大家已经知道如何改造Makefile了，例如ld命令可以改写成。
+\begin{lstlisting}[language=make]
+ld ${ldflags} $? -o $@
+\end{lstlisting}
+使用类似的方法，我们可以将编译命令改写成这样。
+\begin{lstlisting}[language=make]
+gcc ${cflags} -c $< -o $@
+\end{lstlisting}
+
+\subsection{隐含规则}
+如果文件多了，每个文件都要写一遍还是很麻烦的。好在make还提供了“隐含规则”(Implicit Rules)的功能。
+\begin{lstlisting}[language=make]
+CFLAGS = -c
+
+%.o : %c
+  gcc ${CFLAGS} %< -o $@
+
+default: hello
+hello : hello.o lib.o
+   ld  ${LDFLAGS} hello.o lib.o -o hello
+
+hello.o: hello.c
+lib.o: lib.c
+
+clean:
+    rm -f *.o
+    rm -f hello
+.PHONY: clean
+\end{lstlisting}
+
+\subsection{Makefile函数调用}
+如果单单认为Makefile就是这么简单的话，恐怕会让大家失望。
+如果只是这么简单，我们也就不用单独开辟一章来介绍Linux Kernel的Makefile了。
+实际上Makefile包含非常多的强大功能，对于很多支持多平台的软件来说，这些功能都是不可或缺的。
+接下来我们介绍函数调用。
+\subsection{Makefile流程控制}
+大部分介绍编程语言书籍来都倾向于将流程控制放在函数之前，这这里我们却不得不成为一个例外。
+原因很简单，Makefile的流程控制是基于函数调用的，它并没有关键字if，或是关键字for，
+它拥有的是两个函数if和foreach。
+这两个函数是Makefile流程控制的基础。
+\subsubsection{if}
+\subsubsection{foreach}
+还是通过例子来学习它吧
+\begin{lstlisting}[language=make]
+srcs := a.c b.c c.c
+files := $(foreach,n,${srcs},$(shell gcc -c ${n} -o ${n}.o))
+\end{lstlisting}
+函数for有4个参数
+\begin{itemize}
+\item n 用于枚举，代表一次迭代从参数srcs当中取出的值
+\item \$\{srcs\} 用于枚举的对象
+\item 循环体 \$(shell gcc \-c \$\{n\} \-o \$\{n\}.o) 
+\end{itemize}
+
+\subsection{多Makefile协同工作}
+对于大型的项目来说多个Makefile是一定的，多Makefile的相同方式也有多种，比较成用的是直接通过make调用，或者include的方式引入。
+\subsubsection{include}
+这种方式的一般做法是 "从Makefile"仅仅定义target，"主Makefile"则将它们组织起来。著名开源软件chromium就采用这种方式，表面看起来chromium采用的gyp，它其实是一个生成Makefile的脚本，最终完成build的工作的还是Makefile。在这里我们稍微加少一下gyp的工作方式。假设项目现在分成了三个部分liba, libb和程序c。每一个小项目都有一个gyp的文件，这个文件会为各个项目的文件生成一个Makefile。假定liba包含一个名为a.c的文件，libb包含一个名为b.c的文件，程序c包含一个c.c的文件。那么它会生成4个Makefile。
+
+首先是根目录下的Makefile，它包含了所有相关的Makefile，并定义了最顶层的目标，最顶层依赖的目标则放在include的Makefile当中。
+\begin{lstlisting}[language=make]
+include liba/liba.mk
+include libb/libb.mk
+include c/c.mk
+default: ${target}/c
+\end{lstlisting}
+
+\begin{lstlisting}[language=make]
+${target}/c/c: ${target}/liba/liba.a ${target}/libb/libb.a
+\end{lstlisting}
+
+接下来是两个库文件的Makefile。
+\begin{lstlisting}[language=make]
+${target}/liba/liba.a : liba/a.o
+\end{lstlisting}
+
+\begin{lstlisting}[language=make]
+${target}/libb/libb.a : libb/b.o
+\end{lstlisting}
+gyp会根据依赖关系生成include，make程序会根据所有相关的Makefile（根Makefile和其他被引入的Makefile）生成一个依赖树。其实include的本质就是让共享target及target生成规则。
+
+另外一点大家可能注意到了，所有的target都使用了全局路径。对于chomium这种规模的项目来说，重名是不可避免的，于是所有的生成文件及依赖文件,gyp都使用相对于项目根目录的完整路径表达，这样就没有问题了。据说google内部使用的blade也采用类似的方式。不同的是gyp支持多平台，使用json作为数据格式，而google blade则直接使用python程序来管理。腾讯在google code上开源了一个与google blade类似的工具，它家可以看看。
+
+这种方式的Makefile写起来是很麻烦的，而且大部分内容都是重复的，因此使用这种方式管理项目时，一般都会使用另外一个工具来生成Makefile，这些用来生成Makefile的工具的语法都很简单，可读性也非常的好。贴一段blade的语法吧
+
+\begin{lstlisting}[language=make]
+cc_binary(name = 'exec',
+          srcs = ['a.c',
+                  'b.c',
+                  ],
+          deps = ['//base:string',
+                 ]
+)
+\end{lstlisting}
+稍微解释一下，这个项目的类型是一个可执行程序，名为exec，包括两个源文件a.c和b.c，项目依赖于一个名为//base:string的库（当中的路径还告诉的blade如何找到以来的BUILD文件），看起来要比Makefile的语法舒服多了吧。
+
+\subsubsection{make -C }
+这是Linux采用的方式，在顶层Makefile当中通过make命令调用子目录下的Makefile。与include的方式不同，这种方式调用Makefile一般是通过变量来传递数据的。
+
+以Linux为例，它通过obj-y定义了所有用来生成vmlinux的文件，在顶层Makefile当中，会将所有的项逐个生成输出文件并将它们链接起来。
+
+
+\subsection{其他技巧}
+\subsubsection{--dry-run}
+make提供了一个参数--dry-run，顾名思义它仅仅打印步骤去并执行任何的生成目标的指令。用它来观察Makefile的行为非常好用，尤其是在阅读复杂的Makefile的时候。

@@ -1,0 +1,88 @@
+\chapter{工作环境}
+
+\section{qemu}
+\subsection{为什么选用qemu}
+比较流行的用于调试内核的虚拟机有很多，Oracle VirtualBox, VMWare, qemu, bochs等等。
+前面两款是著名的商业软件，我们暂不考虑。 
+作者选用qemu作为虚拟机的原因主要有以下几个
+\begin{compactenum}
+  \item 内嵌gdbstub调试 这可能是使用它的最大原因了，从虚拟机启动开始就可以直接使用gdb远程调试了，没有比这更然人舒心了。
+bochs也包含gdbstub，但需要用户自己编译，如果
+  \item 支持多种架构
+  \item 速度很快
+  \item 安装容易，配置简单，速度快，体积小
+\end{compactenum}
+
+\section{bochs}
+作为虚拟机bochs的速度真的很慢，但是他内嵌了调试功能，这个对于刚开始接触汇编程序和x86保护模式编程的人来说，真的是不可多得。
+
+直接使用它的内嵌调试器可以查看gdt、idt、 ldt、堆栈等等。这个功能用起来真的非常方便。
+
+举个作者亲身的经历吧，在刚开始学习保护模式编程的时候，作者遇到了一个怪事。
+程序倒是很简单，初始化idt, 然后使用ud2触发异常，而后通过汇编程序调用C函数将错误信息打印在屏幕上。
+因为涉及到asm调用C程序，作者使用堆栈传递参数，但是push指令却总不起作用。
+一怒之下改用寄存器传递参数，发现疑点问题没有。这个问题一定出现在了堆栈上。
+于是作者用bochs的dump-stack命令查看堆栈，发现堆栈的地址是16位的，没错它仅仅使用了esp的低16位地址。
+回溯代码，作者终于发现原来作者创建的堆栈段是16位的，而我用gdb调试时都是通过观察esp的地址来查看的，所以一直没法查处问题所在。
+使用bochs调试器时，它可没有做的先入为主的错误观念，于是很容易发现问题所在。
+bochs存在的意义就是帮助我们double-check。
+尤其是当你认为是虚拟机bug的时候，多一个虚拟机用来验证总是一件好事。
+
+\subsection{bochs gdbstub}
+
+bochs最大的缺陷就在于没有内嵌gdbstub, 需要用户自己把它编译进去。这也是一个充满各种小坑的路。
+作者开始编译的时候使用cygwin配置(configure), 使用VC8编译，编译时成功了，但是一旦gdb成功连接，bochs立马崩溃。
+还好后来在cygwin下使用mingw编译成功，如果读者想用，我可以直接把编译成功的binary上传，下载之后应该可以直接使用。
+
+\subsection{cygwin下编译bochs with gdbstub}
+\section{操作系统}
+从开始接触Linux，作者的工作一般都是使用笔记本连接远程开发机的。
+这导致一直都不适应linux的桌面环境，如果非用不可的话，作者宁愿安装一个虚拟机然后用putty链接，就好象链接远程机器一样。
+在刚开始学习内核编程的时候，作者也一直采用这种方式。
+自从cygwin的终端使用putty实现之后，我就毫不犹豫的投入到cygwin的怀抱。
+用cygwin就像putty链接虚拟机一样，此外还省去了共享文件，或者远程拷贝文件的麻烦。
+cygwin也有它的缺点，xserv连接器了比较麻烦，不过还好我们需要用到的需要x的软件都有windows版。
+cygwin的另外一个严重缺点是它之上的编译工具,GNU等生成的代码都是PE文件格式的，不过我们可以通过交叉编译来解决这个问题。
+\section{开发工具}
+
+上面提过cygwin下集成的gcc,mingw等开发工具生成的程序都是可以直接在windows下运行的。
+因为它产生的是PE文件，一种windows采用的文件格式。
+但是我们的内核可是linux的，为此我们需要生成ELF格式的可支持文件，没办法我们必须生成一组交叉编译工具。
+
+如果读者使用Linux作为桌面开发环境有一点也需要注意，本书的内容全部基于i386开发，即：32位操作系统。
+但目前流行的Linux已经全部是64位了，所以大家在编译的时候也需要指定arch位i386啊。
+
+\section{第一个程序}
+
+万事俱备，我们用一个程序来启动机器吧。
+\begin{lstlisting}
+	.code16
+	.text
+_start:	
+	movw	%cs, %ax
+	movw	%ax, %ds
+
+	movl	$0x7FF0, %esp
+	xor	%ebp, %ebp
+1:
+        jmp     1b;
+
+__puts:
+	pusha
+	xor	%bh, %bh
+.Lputs1:
+	lodsb
+	test	%al, %al
+	jz	.done
+	movb	$0x0e, %ah
+	int	$0x10
+	jmp	.Lputs1
+.done:	
+	popa
+	ret
+msg:
+	.asciz	"Hello, Kernel...\r\n"
+.org 510
+	.word	0xAA55
+\end{lstlisting}
+\subsection{编译运行}
