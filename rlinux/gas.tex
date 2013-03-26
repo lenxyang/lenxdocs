@@ -1,5 +1,39 @@
 \chapter{GNU Toolchain}
 \section{GNU AS简介}
 \section{GNU AS}
+\section{机器码编程}
+GAS是一种跨平台的语言，在汇编阶段，它会将程序转换为对应机器架构的代码。为了支持这种跨平台，它的语言规范必须支持多个平台。但某些平台可能没有一些指令操作，GAS就不得不舍弃了。在这里我们介绍一个最基本的指令ljmp，它非常常用，但GAS的ljmp支持的指令格式非常少，这对我们早场了一定的麻烦，举个最简单的例子，在x86保护模式下，如果我们希望跨段调用，可以运行
+\begin{lstlisting}
+  jmp seg:off
+\end{lstlisting}
+对应的GAS指令是。
+\begin{lstlisting}
+  jmp seg,off
+\end{lstlisting}
+但它还有一个格外的限制，就是seg和off必须是常熟，不能是寄存器也不能是内存，那么如果我们预先不知道入口地址呢？（比如加载elf文件，它的入口地址保存在elf文件当中，我们必须从文件里读出并保存在寄存器或是内存当中，而后跳转到这个值，程序才能运行）。
+此外，对于intel来说，如果包含16bit和32bit的代码，也要使用这种方式，GAS对于某些intel的指令前缀可能支持的不够好，如下：arch/i386下采用的方式是直接使用机器码，参见arch/i386/boot/setup.S，这段代码将进入到vmlinux并执行。
+\begin{lstlisting}
+# jump to startup_32 in arch/i386/boot/compressed/head.S
+#
+# NOTE: For high loaded big kernels we need a
+#       jmpi    0x100000,__BOOT_CS
+#       but we yet haven't reloaded the CS register,
+#       so the default size of the target offset
+#       still is 16 bit.  However, using an operand 
+#       prefix (0x66), the CPU will properly take our 
+#       48 bit far pointer. (INTeL 80386 Programmer's 
+#       Reference Manual, Mixing 16-bit and 32-bit code, 
+#       page 16-6)
+
+        .byte 0x66, 0xea   # prefix + jmpi-opcode
+code32: .long   0x1000     # will be set to 0x100000
+                           # for big kernels
+        .word   __BOOT_CS
+
+\end{lstlisting}
+上面这段代码之所以写成这样，就是由于在16bit模式运行的CPU， 寄存器CS也被看作16bit的，此时我们没有没法访问高于高于64K的内存，因此必须使用intel的16-bit,32-bit混合编程技巧了，在Intel Software Developer's Manual的第三卷当中有单独的一张来介绍这个技巧：通过给指令增加前缀0x66达到目的。
+
+同样适用类似的技巧，我们还可以在调用指令之前修改目标地址，从而使得我们可以指定动态确定跳转的目标。
+\subsection{Intel指令格式}
 \section{GNU C嵌入汇编}
 \section{汇编语言调试技巧}

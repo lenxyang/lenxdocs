@@ -10,42 +10,239 @@
 \subsection{加载}
 为了能够将内核加载到高于64K的内存，我们付出了很多努力，与对任何一个超过64K的内存，我们必将将它分成两个部分存储。实际上，实模式也是可以访问4G物理内存的。接下来我们做个实验看看如何做到这一点，不然的话，我们怎么能像Linux那样将内核加载到1M内存之上呢，而且vmlinux的可是很大的一个文件，1M的寻址空间一定是不够的。
 \subsection{打开4G内存访问}
+实际上，每一个段寄存器都有可以分两个部分，可见部分(visible part)和隐藏部分(hidden part)。其中隐藏部分有时候叫做descriptor cache或者shadow register。后面保护模式章节会提到，保护模式下段寄存器保存的是selector，读者可以简单的理解成数组的下标，在每次使用selector的时候，CPU都需要查表。这明显会影响效率，CPU提供了一种机制在查表的时候顺便将GDT的值存放在段寄存器的不可见部分，因此它又叫做descriptor cache，因此段寄存器部分的格式就是descriptor的格式，它的具体格式如下图所示：
+\begin{pspicture}
+\end{pspicture}
+这里仅仅介绍与内存相关的部分就好，其它的细节还会在“保护模式“当中详细介绍。
+
+通过修改在修改段寄存器具体内容的时候，它的隐含部分也会更改。利用这种机制可以实现4G的
+
+修改CS隐含部分的值需要使用模式切换，但CPU进入到保护模式的时候，段寄存器的隐含部分自动改变它的状态，但从保护模式且会real-mode，段寄存器的属性则不会改变，我们就利用这个技巧使boot程序能够访问4G内存。
+还是通过代码来说明如何打开real-mode下的4G访问
+\begin{lstlisting}
+        .code16
+        .text
+
+.equ    __CODE32_CS,    0x8
+.equ    __DATA32_DS,    0x10
+.equ    __CODE16_CS,    0x0
+
+        .global _start
+_start:
+        mov     %cs, %ax
+        mov     %ax, %ds
+        mov     %ax, %ss
+        mov     $0x7c00, %sp
+
+        lgdt    gdtptr
+
+        /* 打开保护模式 */
+        mov     %cr0, %eax
+        or      $0x1, %eax
+        mov     %eax, %cr0
+
+        /* 进入保护模式 */
+        .byte   0x66, 0xea
+        .long   pm
+        .word   0x8
+
+        .code32
+pm:
+        mov     $__DATA32_DS, %eax
+        mov     %eax, %ds
+        mov     %eax, %fs
+        mov     %eax, %gs
+
+        /* 关闭保护模式 */
+        mov     %cr0, %eax
+        and     $0xFFFFFFFE, %eax
+        mov     %eax, %cr0
+
+        .byte   0x66, 0xea
+        .long   real
+        .word   __CODE16_CS
+
+        .code16
+real:
+        mov     $0x7c00, %sp
+
+        mov     $1234, %eax
+        mov     $0x100000, %edx
+        mov     %eax, (%edx)
+
+        .loop:
+        jmp     .loop
+gdt:
+        .quad   0x0000000000000000 /* NULL selector */
+        .quad   0x00cf9a000000ffff /* base=0, limit=0xffff, DPL=0 */
+        .quad   0x00cf92000000ffff /* base=0, limit=0xffff, DPL=0 */
+gdtptr:
+        .word   gdtptr - gdt
+        .long   gdt
+        .word   0
+.org    510
+        .word   0xAA55
+\end{lstlisting}
+
+\subsubsection{验证}
+如何验证呢？ 我们不用程序的方式来验证，该有调试器的方式验证，这样做可以避免由于我们理解不到位造成错误。试想如果对内存的理解方式有问题，按照同样的方式写入熟读到内存然后再按照同样的方式读出内存，那结果是一样的，但我们真的不数据写入到了我们希望的那段内存了吗？如果发生了“×××”怎么办，我们根本不知道。比较好的方法就是使用两种不同方式，比如使用自己的程序写入内存，而后用内置调试器来访问物理内存验证数据，这种方法可以确保万无一失。
+接下来将使用bochs内置调试器来验证，这样做的原因很简单，gdb远程调试的方式无法获得CPU的状态，某些状态gdb根本就不支持，比如gdt的内容、sreg的隐含部分都无法通过gdb来查看。bochs专门针对x86平台开发，有强大查看CPU内核状态的工具。
+\begin{lstlisting}[language=bash]
+<bochs:> break *0x7c00
+<bochs:> c
+<bochs:> n...
+<bochs:27> sreg
+es:0x0000, dh=0x00009300, dl=0x0000ffff, valid=1
+        Data segment, base=0x00000000, limit=0x0000ffff, Read/Write, Accessed
+cs:0x0000, dh=0x00cf9300, dl=0x0000ffff, valid=1
+        Data segment, base=0x00000000, limit=0xffffffff, Read/Write, Accessed
+ss:0x0000, dh=0x00009300, dl=0x0000ffff, valid=7
+        Data segment, base=0x00000000, limit=0x0000ffff, Read/Write, Accessed
+ds:0x0010, dh=0x00cf9300, dl=0x0000ffff, valid=7
+        Data segment, base=0x00000000, limit=0xffffffff, Read/Write, Accessed
+fs:0x0010, dh=0x00cf9300, dl=0x0000ffff, valid=1
+        Data segment, base=0x00000000, limit=0xffffffff, Read/Write, Accessed
+gs:0x0010, dh=0x00cf9300, dl=0x0000ffff, valid=1
+        Data segment, base=0x00000000, limit=0xffffffff, Read/Write, Accessed
+ldtr:0x0000, dh=0x00008200, dl=0x0000ffff, valid=1
+tr:0x0000, dh=0x00008b00, dl=0x0000ffff, valid=1
+gdtr:base=0x0000000000007c51, limit=0x18
+idtr:base=0x0000000000000000, limit=0x3ff
+\end{lstlisting}
+
+再向后过 mov \%eax, (\%edx)之后，验证内存是否已经写入
+\begin{lstlisting}[language=bash]
+bochs:31> x 0x100000
+[bochs]:
+0x0000000000100000 <bogus+       0>:    0x000004d2
+\end{lstlisting}
+4d2为1234的16进制表示，我们确实成功了。
+
 \subsection{真实世界的vmlinux}
-为了给大家呈现一个简单的世界，作者自己实现了一个内核加载程序。
-这个程序加载简化的内核足够用了，但对于真实的linux内核，他是绝对不够用的。
-原因很简单，vmlinux如果包含调试信息的话有200M那么大，在实模式下是绝对无法加载的。
-真实世界的linux通常是由GRUB加载，当然还有其他的加载器。
-GRUB基本上已经是一个小型的操作系统了。
-它支持与Linux相同的驱动程序框架，并且包含了很多驱动程序，比如ext2,msdos等文件系统的驱动。
-当然为了统一支持他们，还需要VFS。
-此外还携带一个shell。
-当然它不支持操作系统的高级特性，比如复杂的内存管理，多进程的切换和调度，它都没有。
-但它一定是运行在保护模式下的，在完成加载之后回到实模式，而后将控制权交给目标操作系统。
-在我们的简化操作系统基本成型以后，我们会尝试使用GRUB2来加载我们的系统。
+为了给大家呈现一个简单的世界，作者自己实现了一个内核加载程序。这个程序加载简化的内核足够用了，但对于真实的linux内核，他是绝对不够用的。原因很简单，vmlinux如果包含调试信息的话有200M那么大，在实模式下是绝对无法加载的。真实世界的linux通常是由GRUB加载，当然还有其他的加载器。GRUB基本上已经是一个小型的操作系统了。它支持与Linux相同的驱动程序框架，并且包含了很多驱动程序，比如ext2,msdos等文件系统的驱动。当然为了统一支持他们，还需要VFS。此外还携带一个shell。当然它不支持操作系统的高级特性，比如复杂的内存管理，多进程的切换和调度，它都没有。但它一定是运行在保护模式下的，在完成加载之后回到实模式，而后将控制权交给目标操作系统。在我们的简化操作系统基本成型以后，我们会尝试使用GRUB2来加载我们的系统。
 \section{调试技巧}
 
 程序已经可以运行了，接下来我们熟悉一些调试技巧，这对我们将来开发非常有用。俗话说程序是三分编七分调。程雪写完也就是完成了三成的工作而已，真正复杂的是调试呕。
 
-只要是程序就一定有bug。尤其是按照前面我们所鼓励的方式：将代码抄进文件编译运行。
-如果有时间作者强烈推荐这种方式，它能够增强你对系统的理解。
-但这种方式一定会让你的程序存在bug，之前已经介绍了qemu自身就带有gdbstub。让我们一起感受他的强大吧。
+只要是程序就一定有bug。尤其是按照前面我们所鼓励的方式：将代码抄进文件编译运行。如果有时间作者强烈推荐这种方式，它能够增强你对系统的理解。但这种方式一定会让你的程序存在bug，之前已经介绍了qemu自身就带有gdbstub。让我们一起感受他的强大吧。
 \subsection{gdb远程调试}
-\subsection{symbol-file}
-前面介绍过，启动程序必须控制在512字节，而且它必须是binary格式的。
-所谓binary格式就是CPU可以从第一个字节开始运行的程序。
-因此调试信息是不可能存在与binary之上的。
-不过大家不用担心，因为我们还生成了一个ELF文件，这个文件包含完整的调试信息。
 \begin{lstlisting}[language=bash]
- target remote :1234
  symbol-file out/arch/i386/boot/bootsect.gdb
+ set architecture i8080
+ target remote :1234
  hbreak *0x7c00
 \end{lstlisting}
-\subsection{基本原理}
-在调试之前，我必须首先给大家讲解一下gdb远程调试的基本原理。
-实际上gdb远程调试从架构上将是一个胖客户端程序，服务器仅仅回传最基本的信息。
-这些信息基本上就是各类寄存器的值。
-而gdb客户端通过eip的内容及带有完整调试信息的elf文件，就可以分析出当前在那个函数运行。
-设置断点的原理也是类似的，如果读者对它感兴趣可以参考附录当中的章节。
 
-\subsection{不使用gdbstub}
-如果不是gdbstub，那么调试起来汇编的比较痛苦，但也不是没有办法。接下来我们介绍如何使用bochs来调试内核。
+\subsection{symbol-file}
+前面介绍过，启动程序必须控制在512字节，而且它必须是binary格式的。所谓binary格式就是CPU可以从第一个字节开始运行的程序。因此调试信息是不可能存在与binary之上的。不过大家不用担心，因为我们还生成了一个ELF文件，这个文件包含完整的调试信息。
+调试信息大概是什么样子呢？objdump可以帮助大家来理解调试信息看起来是什么样子？正如刚才提到，make之后生成了两个文件bootsect.gdb和bootsect.bin，bootsect.gdb包含完整信息，而bootsect.bin仅仅包含程序。我们用objdump来查看反汇编一下bootsect.gdb的内容，大家可以看到
+\begin{lstlisting}[language=bash]
+$ objdump.exe  -dl arch/i386/boot/bootsect.gdb
+
+arch/i386/boot/bootsect.gdb:     file format elf32-i386
+
+
+Disassembly of section .text:
+
+00007c00 <_start>:
+arch/i386/boot/bootsect.S:17
+    7c00:       8c c8                   mov    %cs,%eax
+arch/i386/boot/bootsect.S:18
+    7c02:       8e d8                   mov    %eax,%ds
+arch/i386/boot/bootsect.S:19
+    7c04:       8e c0                   mov    %eax,%es
+arch/i386/boot/bootsect.S:20
+    7c06:       8e e0                   mov    %eax,%fs
+arch/i386/boot/bootsect.S:21
+    7c08:       8e e8                   mov    %eax,%gs
+arch/i386/boot/bootsect.S:23
+    7c0a:       66 bc f0 7f             mov    $0x7ff0,%sp
+    7c0e:       00 00                   add    %al,(%eax)
+arch/i386/boot/bootsect.S:24
+    7c10:       66 31 ed                xor    %bp,%bp
+arch/i386/boot/bootsect.S:29
+    7c13:       fa                      cli
+arch/i386/boot/bootsect.S:30
+\end{lstlisting}
+这就是调试信息，它将源代码文件与地址对应起来。在我们进行反汇编的时候，它用显示源代码而非反汇编代码。那么反汇编代码看起来如何呢？
+
+\begin{lstlisting}[language=bash]
+$ objdump.exe  -d arch/i386/boot/bootsect.gdb
+
+arch/i386/boot/bootsect.gdb:     file format elf32-i386
+
+
+Disassembly of section .text:
+
+00007c00 <_start>:
+    7c00:       8c c8                   mov    %cs,%eax
+    7c02:       8e d8                   mov    %eax,%ds
+    7c04:       8e c0                   mov    %eax,%es
+    7c06:       8e e0                   mov    %eax,%fs
+    7c08:       8e e8                   mov    %eax,%gs
+    7c0a:       66 bc f0 7f             mov    $0x7ff0,%sp
+    7c0e:       00 00                   add    %al,(%eax)
+    7c10:       66 31 ed                xor    %bp,%bp
+    7c13:       fa                      cli
+    7c14:       e4 92                   in     $0x92,%al
+    7c16:       0c 02                   or     $0x2,%al
+    7c18:       e6 92                   out    %al,$0x92
+    7c1a:       fb                      sti
+    7c1b:       e8 82 01 be ba          call   babe7da2 <ELFDATA_ADDR+0xbabc7da2>
+    7c20:       7d e8                   jge    7c0a <_start+0xa>
+    7c22:       6c                      insb   (%dx),%es:(%edi)
+    7c23:       01 b8 00 20 8e c0       add    %edi,-0x3f71e000(%eax)
+    7c29:       bf 00 00 b8 01          mov    $0x1b80000,%edi
+    7c2e:       00 b9 32 00 e8 29       add    %bh,0x29e80032(%ecx)
+    7c34:       01 e8                   add    %ebp,%eax
+    7c36:       08 00                   or     %al,(%eax)
+    7c38:       66 ea 00 00 10 00       ljmpw  $0x10,$0x0
+    ...
+\end{lstlisting}
+我们大致知道调试信息就是把源代码文件和可执行文件对应起来，那么它有什么用呢？还是举例说明吧，比如说我们希望在跳入到内核之前就是指令ljmp处设置断点。如果没有调试信息，我们必须首先返回便代码找到对应的地址 0x7c38，然后用gdb在物理内存0x7c38处设置断点；如果gdb加载了调试信息，同样是对ljmp设置断点，我们只需知道所处的文件行处就可以啦，hbreak bootsect.S:55，是不是省去了很多麻烦。此外，在我们执行执行step之类指令的时候，有调试信息是我们能够使用GUI工具跟踪当前执行到了那一行源代码，源代码可是有注释的；如果没有调试信息，你就能看到枯燥的汇编代码了。
+当然实际上调试信息包含的内容更多，如果想了解更多内容可以参考gdbstub相关的文档。
+
+\subsection{bochs内置调试}
+gdb调试器非常强大，但它有一个致命缺点：它非常的主观。它到底有多主观呢，这完全取决于用户。在gdb调试的时候，虚拟机会提供一部分数据，比如内存，如果用户想要查看内存当中到底是什么指令，就可以调用diassemble命令来反编译。但gdb并不知道现在CPU处于什么状态，因此它会根据用户的设置来反汇编。
+\begin{lstlisting}[language=bash]
+# 告诉gdb按照16bit的指令来反汇编
+set architecture i8086
+# 通知gdb按照32bit模式来返回编
+set architecture i386
+\end{lstlisting}
+
+你经常会发现明明执行了一条指令，但结果却与预期不同，这就是反汇编错误导致的。
+
+bochs的内置调试器却绝对不会犯类似的错误，它会跟踪CPU的状态，当进入保护模式以后他就会按照i386模式反汇编，如果跳出保护模式则按照i8086的模式反汇编。这种可观性能够帮助我们很快的找到错误。用上面realtime4G这个程序作为例子，我们将gdt的内容做一下更改:
+\begin{lstlisting}[language=bash]
+gdt:
+        .quad   0x0000000000000000
+        .quad   0x00cf9a000000ffff
+        .quad   0x00cf92000000ffff
+\end{lstlisting}
+更改以后整个段编程了16禁止的，这时候数据段编程了16bit模式的，运行至返回式模式处的代码而后继续运行，查看它们的代码
+
+\begin{lstlisting}[language=bash]
+<bochs:21>
+Next at t=14041024
+(0) [0x0000000000007c42] 0000:7c42 (unk. ctxt): add byte ptr ds:[eax], al ; 0000
+<bochs:22>
+Next at t=14041025
+(0) [0x0000000000007c44] 0000:7c44 (unk. ctxt): mov ax, 0x04d2            ; 66b8d204
+<bochs:23>
+Next at t=14041026
+(0) [0x0000000000007c48] 0000:7c48 (unk. ctxt): add byte ptr ds:[eax], al ; 0000
+<bochs:24>
+Next at t=14041027
+(0) [0x0000000000007c4a] 0000:7c4a (unk. ctxt): mov dx, 0x0000            ; 66ba0000
+<bochs:25>
+Next at t=14041028
+(0) [0x0000000000007c4e] 0000:7c4e (unk. ctxt): adc byte ptr ds:[eax], al ; 1000
+<bochs:26>
+Next at t=14041029
+(0) [0x0000000000007c50] 0000:7c50 (unk. ctxt): mov word ptr ss:[bp+si], ax ; 67668902
+<bochs:27>
+Next at t=14041030
+(0) [0x0000000000007c54] 0000:7c54 (unk. ctxt): jmp .-2 (0x00007c54)      ; ebfe
+\end{lstlisting}
+看到了吗，与我们的预期完全不同，很快我们就能找到错误，原味数据段被指定成了32bit的了。实际上，这种问题在gdt当中是比较常见的，在刚开始学习保护模式编程的时候，bochs的内部调试器真的很有帮助，建议读者这两种调试器都要熟悉才好。
