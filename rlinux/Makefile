@@ -5,7 +5,7 @@ compile:
 	xelatex	index.tex
 	xelatex	index.tex
 	mkdir -p ../out
-	cp index.pdf ../out
+	cp index.pdf ../out/rlinux.pdf
 show : 	compile	
 	~/.emacs.d/shell/openpdf.sh ../out/index.pdf
 clean:

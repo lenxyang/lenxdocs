@@ -23,7 +23,7 @@
 
 \section{构建新的内核}
 
-内核是有汇编和C联合编写的，与寻常的程序不同，我们不能简单的ld $(LDFLAGS) fileslist -o vmlinux，而使使用一种叫做ldscript的脚本。 ld script提供了非常有用的功能，使我们在编写内核的时候更简单:
+内核是有汇编和C联合编写的，与寻常的程序不同，我们不能简单的ld \$(LDFLAGS) fileslist -o vmlinux，而使使用一种叫做ldscript的脚本。 ld script提供了非常有用的功能，使我们在编写内核的时候更简单:
 1. 制定不同段的位置
 2. 将多个段合并成一个段
 3. 初始化全局变量

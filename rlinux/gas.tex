@@ -1,6 +1,25 @@
 \chapter{GNU Toolchain}
 \section{GNU AS简介}
 \section{GNU AS}
+\section{寻址方式}
+早年学习汇编的时候，在开头部分的章节总会有一章是关于选址方式的，它确实非常基础且异常重要。由于使用AT\&T语法的汇编，它与Intel的语法有很大的不同，因此我们还是要在此处将各种寻址方式列出并，以便读者在使用各种寻址方式的时候可以快速查阅。
+
+\begin{tabular}{|l|l|l|}
+\hline
+\multicolumn{3}{|c|} {\mshei{Nasm 与 AT\&T 寻址方式对比}} \\ \hline
+            & AT\&T 格式       & nasm 格式  \\ \hline
+ 立即数寻址 & mov \$1, \%eax   & mov eax, 1 \\ \hline
+ 寄存器寻址 & mov \%eax, \%ebx & mov ebx, eax  \\ \hline
+ 直接寻址   & mov (addr), \%eax & mov eax, [addr] \\ \hline
+ 间接寻址   & mov (\%ebx), \%eax  & mov eax, [ebx] \\ \hline
+ 寄存器相对寻址 & mov 2(\%ebp), \%eax & mov eax, 2[ebp] \\ \hline
+\end{tabular}
+
+有些寻址方式使用的寄存器是有要求的，例如“基址加变址寻址”，intel手册当中
+\begin{lstlisting}
+  mov %fs:1(%ebp, %edi, 8)
+\end{lstlisting}
+
 \section{机器码编程}
 GAS是一种跨平台的语言，在汇编阶段，它会将程序转换为对应机器架构的代码。为了支持这种跨平台，它的语言规范必须支持多个平台。但某些平台可能没有一些指令操作，GAS就不得不舍弃了。在这里我们介绍一个最基本的指令ljmp，它非常常用，但GAS的ljmp支持的指令格式非常少，这对我们早场了一定的麻烦，举个最简单的例子，在x86保护模式下，如果我们希望跨段调用，可以运行
 \begin{lstlisting}
