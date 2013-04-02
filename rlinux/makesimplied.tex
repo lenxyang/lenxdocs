@@ -49,6 +49,7 @@ $(vmlinux-dirs): scripts
         $(MAKE) $(build)=$@
 \end{lstlisting}
 其实这里的递归调用跟程序的递归调用非常不同，它是通过\$(vmlinux-dirs)这个变量完成的。这个变量定义了所有的需要调用的Makefile路径，由于涉及多个路径它实际上会被拆成多个调用规则。如果将变量展开，那么它看起来会更清楚：
+
 \begin{lstlisting}[language=make]
 arch/i386/: scripts
     $(MAKE) $(build)=arch/i386/
@@ -63,6 +64,7 @@ net/: scripts
     $(MAKE) $(build)=net
 
 \end{lstlisting}
+
 通过参数产地所有需要被调用的Makefile的路径全部定义在了变量\$(vmlinux-dirs)当中，make会自动的将所有目录展开，而后逐个调用Makefile。不过\$(MAKE) \$(build)这这句并不是很简单，变量\$(build)实际上是另外一个Makefile，在linux下它对应文件scripts/Makefile.build，在我们的系统中，我将它改成了scripts/build.mk，这仅仅出于个人习惯，请见谅。
 
 除了上面的方式，kbuild还提供了另外一点中递归调用方式，这种方式仅仅是调用make，但并不传递或者改变变量的值，参考下面代码（摘自scripts/build.mk）。

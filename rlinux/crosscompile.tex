@@ -1,0 +1,34 @@
+\chapter{交叉编译}
+仅仅阅读内核是远远不够的，如果能够动态跟踪内核的执行路径，对于理解内核有莫大的帮助。鉴于我们的内核主要面向i386架构，而时下流行的机器及操作系统全部是64位系统，读者是没有办法直接编译32位内核的，必须使用一些功能才能做到。在这方面的投资绝对是值得的，随着对内核理解的加深，如果希望在手机等移动设备平台上调试内核，这些工具都是要熟悉的。
+
+\section{crosstool-ng}
+crosstool-ng也是GNU的开源项目，它能够自动下载，编译并生成cross compiler所需要的所有工具，库及操作系统。值得一提的是，某些代码并不能直接编译，需要打些patch，这些工作crosstool-ng都能够自动完成。
+
+\begin{lstlisting}
+ct-ng menuconfig
+ct-ng build.8
+\end{lstlisting}
+
+\section{依赖项}
+在开始交叉编译之前，需要安装一系列的编译工具，它们包括
+
+
+
+这些工具很容易获取，无论是在linux平台还是在cgywin上，它们都是很基础的包。
+
+\section{常见错误}
+编译工具如果在cgywin平台上编译可能会出现大小写的问题，默认情况下windows的文件名不是大小写敏感的，而某些开源软件的代码文件必须要保证这点，否则将会出现文件被覆盖等错误。好在微软并没有堵死“大小写敏感”，用户可以通过注册表来修改“大小写敏感”选项。具体的注册表键值设置如下：
+\begin{lstlisting}
+ Windows Registry Editor Version 5.00
+
+ [HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\Control\Session Manager\kernel]
+``obcaseinsensitive''=dword:00000000
+\end{lstlisting}
+
+
+
+
+
+
+
+
