@@ -1,0 +1,77 @@
+\section{x86分页模式}
+
+\subsection{反汇编}
+在启用分页之后，反汇编将变得有些令人迷惑。在启动分页模式之前，调试总是针对物理地址的，这时候使用的指令是hbreak；启动分页模式之后，如果依然按照之前的方法进行，读者一定会发现与地址相关的值是转换为硬件地址之后的值，而非虚拟地址，这多少会令人疑惑分页机制到底启用没有。没关系，验证的方法总是有的，通过反汇编虚拟地址是一个不错的办法。
+
+使用gdb对虚拟地址进行反汇编
+\begin{lstlisting}
+(gdb) disas 0xc0100000,+100
+Dump of assembler code from 0xc0100000 to 0xc0100064:
+   0xc0100000 <startup_32+0>:   cld
+   0xc0100001 <startup_32+1>:   lgdtl  0x100294
+   0xc0100008 <startup_32+8>:   mov    $0x10,%eax
+   0xc010000d <startup_32+13>:  mov    %eax,%ds
+   0xc010000f <startup_32+15>:  mov    %eax,%es
+   0xc0100011 <startup_32+17>:  mov    %eax,%fs
+   0xc0100013 <startup_32+19>:  mov    %eax,%gs
+   0xc0100015 <startup_32+21>:  mov    %eax,%ss
+   0xc0100017 <startup_32+23>:  mov    $0x105000,%edi
+   0xc010001c <startup_32+28>:  mov    $0x101000,%edx
+   0xc0100021 <startup_32+33>:  mov    $0x7,%eax
+   0xc0100026 <startup_32+38>:  lea    0x7(%edi),%ecx
+   0xc0100029 <startup_32+41>:  mov    %ecx,(%edx)
+   0xc010002b <startup_32+43>:  mov    %ecx,0xc00(%edx)
+   0xc0100031 <startup_32+49>:  add    $0x4,%edx
+   0xc0100034 <startup_32+52>:  mov    $0x400,%ecx
+   0xc0100039 <startup_32+57>:  stos   %eax,%es:(%edi)
+   0xc010003a <startup_32+58>:  add    $0x1000,%eax
+   0xc010003f <startup_32+63>:  loop   0xc0100039 <startup_32+57>
+   0xc0100041 <startup_32+65>:  lea    0x20007(%edi),%ebp
+   0xc0100047 <startup_32+71>:  cmp    %ebp,%eax
+   0xc0100049 <startup_32+73>:  jb     0xc0100026 <startup_32+38>
+   0xc010004b <startup_32+75>:  mov    %edi,0x1002a0
+   0xc0100051 <startup_32+81>:  mov    $0x101000,%eax
+   0xc0100056 <startup_32+86>:  mov    %eax,%cr3
+   0xc0100059 <startup_32+89>:  mov    %cr0,%eax
+   0xc010005c <startup_32+92>:  or     $0x80000000,%eax
+   0xc0100061 <startup_32+97>:  mov    %eax,%cr0
+End of assembler dump.
+\end{lstlisting}
+
+
+使用gdb对物理地址进行反汇编
+\begin{lstlisting}
+(gdb) disas 0x100000,+100
+Dump of assembler code from 0x100000 to 0x100064:
+=> 0x00100000:  cld
+   0x00100001:  lgdtl  0x1000fc
+   0x00100008:  mov    $0x18,%eax
+   0x0010000d:  mov    %eax,%ds
+   0x0010000f:  mov    %eax,%es
+   0x00100011:  mov    %eax,%fs
+   0x00100013:  mov    %eax,%gs
+   0x00100015:  mov    %eax,%ss
+   0x00100017:  mov    $0x104000,%edi
+   0x0010001c:  mov    $0x101000,%edx
+   0x00100021:  mov    $0x7,%eax
+   0x00100026:  lea    0x7(%edi),%ecx
+   0x00100029:  mov    %ecx,(%edx)
+   0x0010002b:  mov    %ecx,0xc00(%edx)
+   0x00100031:  add    $0x4,%edx
+   0x00100034:  mov    $0x400,%ecx
+   0x00100039:  stos   %eax,%es:(%edi)
+   0x0010003a:  add    $0x1000,%eax
+   0x0010003f:  loop   0x100039
+   0x00100041:  lea    0x20007(%edi),%ebp
+   0x00100047:  cmp    %ebp,%eax
+   0x00100049:  jb     0x100026
+   0x0010004b:  mov    %edi,0x100108
+   0x00100051:  mov    $0x101000,%eax
+   0x00100056:  mov    %eax,%cr3
+   0x00100059:  mov    %cr0,%eax
+   0x0010005c:  or     $0x80000000,%eax
+   0x00100061:  mov    %eax,%cr0
+End of assembler dump.
+\end{lstlisting}
+
+对比结果可以很明显的发现其中的差别，针对虚拟地址的反汇编的地址值基本都是0xC001****格式的，因为gdb做了一些转换工作，如果不知道这种转换的存在，相信调试者一定会很迷惑。因为作者就曾经很迷惑：到底分页机制启用了没有。作者还尝试使用objdump的反汇编结果与物理地址反汇编结果向对比，差别于此类似，当却让作者开始怀疑虚拟机的正确性。还有“交叉验证”的方式总是能够帮助更进一步的理解问题。
