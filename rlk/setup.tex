@@ -1,0 +1,26 @@
+\chapter{两阶段引导}
+linux通过GRUB加载，GRUB会加载两个部分到内存当中，分别是setup和vmlinux，这两个文件都是ELF格式的可执行程序。
+
+其中setup负责获取硬盘参数等初始化工作，在初始化工作完成以后，setup进入保护模式并跳转至vmlinux的起始点。这部分代码主要工作在实模式下，且需要通过BIOS提供的中断功能完成初始化，初始化的参数保存在物理内存当中并通过寄存器传递保存参数的物理内存地址，最后跳转到vmlinux的起始地址处。
+
+vmlinux就是内核了，它将完成内核各个模块的加载，包括"启动阶段内存管理"，"中断控制", "内存管理"等，之后内核启动，系统完全交由linux控制。
+
+实际上ldscript能够将两个script合并为一个ELF文件，为了模拟linux的完整行为，rlk会完全按照linux的方式实现，不同的是rlk大大简化了实现细节。
+
+有一点需要注意的是linux的setup实现使用了编译选项-Os，setup当中的一些汇编代码需要与经优化的代码保持一致，这样做需要很多技巧以及对代码优化的理解，rlk会使用简单直接的方式抛弃此类技巧以便于理解。
+
+思考题：为什么linux要将setup与vmlinux分开，而不将它们合并为一个文件呢？
+
+\subsection{loader}
+采用两阶段引导，rlk将需要三个程序loader，setup和vmlinux。其中loader扮演的是与GRUB类似的角色。
+
+\subsection{setup}
+\subsubsection{初始参数}
+在linux代码当中有一个名为setup\_header的结构题，它保存启动相关的一些参数。它的初始化代码位于arch/x86/boot/header.S当中，对它的初始化设计到一些技巧，某些字段看起来似乎是代码也是数据。在rlinux当中，大部分的字段都已经被去掉了只有少部分必要的留下来。
+\begin{lstlisting}
+\end{lstlisting}
+
+\subsubsection{pmjump}
+\subsection{进入内核}
+
+

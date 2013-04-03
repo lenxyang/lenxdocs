@@ -1,0 +1,58 @@
+\chapter{控制台及终端}
+
+\section{printk}
+\subsection{early-printk}
+early-printk是初始化时期的printk的实现。Linux为了提供类似功能的通用初始化架构，利用了一些技巧，这些技巧很多其他模块都用到了。
+
+
+setup\_early\_printk是初始化early\_printk的函数，通过宏early\_param将初始化printk的函数setup\_early\_printk的存放在obs\_kernel\_param数组当中。
+
+\begin{lstlisting}[language=c]
+
+// 文件 arch/x86/kernel/early_printk.c
+early_param("earlyprintk", setup_early_printk);
+
+
+// 文件 include/kernel/init.h
+/*
+ * Only for really core code.  See moduleparam.h for the normal way.
+ *
+ * Force the alignment so the compiler doesn't space elements of the
+ * obs_kernel_param ``array'' too far apart in .init.setup.
+ */
+#define __setup_param(str, unique_id, fn, early)                        \
+        static const char __setup_str_##unique_id[] __initconst \
+                __aligned(1) = str; \
+        static struct obs_kernel_param __setup_##unique_id      \
+                __used __section(.init.setup)                   \
+                __attribute__((aligned((sizeof(long)))))        \
+                = { __setup_str_##unique_id, fn, early }
+
+#define __setup(str, fn)                                        \
+        __setup_param(str, fn, fn, 0)
+
+/* NOTE: fn is as per module_param, not __setup!  Emits warning if fn
+ * returns non-zero. */
+#define early_param(str, fn)                                    \
+        __setup_param(str, fn, fn, 1)
+
+\end{lstlisting}
+从上面的代码可以看到，\_\_setup\_param的数据以struct obs\_kernel\_param的结构存放并置与.init.setup段当中，这个段专门用来存储初始化阶段的数据，且全部以结构体obs\_kernel\_param的结构存储。通过段指令，即使early\_param宏存放与不同的文件当中，但数据仍然是连续存储的，它看起来就像一个数组。
+
+连续存放的文件解决了，接下来探究一下Linux是如何访问这些数据的，毕竟每次修改代码，这些数据的位置都会改变，因此它们的地址是不固定的，也就是说不能通过制定地址常量的方式来访问。Linux通过定义在lds当中的全局变量来定位.init.setup的起始及结束地址，这种技巧也是Linux非常常用的技巧之一。
+\begin{lstlisting}
+__setup_start = .;
+.init.setup : { *(.init.setup) }
+__setup_end = .;
+\end{lstlisting}
+
+而后在init/main.c当中就可以通过两个外部变量来遍历这个数组了。
+\begin{lstlisting}[language=c]
+
+extern struct obs_kernel_param __setup_start[], __setup_end[];
+static int do_early_param(char* param, char* val) {
+  for (p = __setup_start; p < __setup_end; p++) {
+    /* code */
+  }
+}
+\end{lstlisting}
