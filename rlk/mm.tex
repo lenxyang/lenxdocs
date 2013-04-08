@@ -1,7 +1,10 @@
 
 \chapter{Linux内存管理}
 
-内存管理是内核当中最复杂的部分了，而且它是很多模块的基础，在没有内存管理之前，操作内存的基本方式是“按照约定”：指定的物理内存存放制定的内容。这样做的好处是简单，但无法完成动态分配等操作。在使用C语言时，很多时候都用全局变量和静态变量来管理内存。
+
+
+\section{Linux Memory Management}
+接下来主要介绍Linux内存管理。
 
 Linux支持多种体系结构，为了方便这种跨体系结构的开发, Linux使用了大量的类似于C++ Virtual Function的方式。
 首先它为每一个子系统定义了一组通用操作，在不同的系统下有不同的实现。
@@ -11,4 +14,175 @@ MM(memory management)与Linux其他模块一样也是按照这种方式组织的
 
 我们从i386的内存分页机制及初始化流程来开始，一步一步分析，一步一步实现。
 在基础打好之后，我们在研究更高层的linux内存管理策略。
+
+
+\section{i386体系下的内存管理}
+
+
+处理器所支持的RAM容量收到地址总线的限制，早期Intel(80386)的处理器虽然有32位地址总线，但是由于某些原因，它仅仅能够提供1G的寻址能力。
+这对于现在的应用程序来说显然是不够用的。
+Intel通过增加地址引脚从32位增加到了36位，使寻址能力达到了64GB， 之后Intel引入了PAE(Physical Address Extension)的机制，使得CPU的选址能力达到了这个范围。
+
+\subsection{i386分页基础}
+i386分页机制提供了一种从线性地址向物理地址的映射功能。
+在程序试图访问线性地址时，CPU的MMU自动计算出对应的物理地址。 
+这种机制是应用程序寻址空间隔离的基础。
+
+MMU是如何计算出与线性地址对应的物理地址的呢？ 这个工作由CPU内部的MMU来完成。
+简单的来说MMU完成的工作就是将一个完整的32位地址分段查表最终得到对应的物理地址。
+以三级页表为例，首先我们一直全局页表(PGD)的地址保存在一个特殊寄存器CR3当中。
+当给定一个32位地址的时候，我们根据31～21(共10位地址)来计算第二级页表的起始地址，直观一点用代码来表示就是\begin{lstlisting}[language=C]
+  pmd = pgd + (vaddr & 0xFFC0000) >> 22)
+  pte = pmd + (vaddr & 0x003FF000 >> 12)
+  paddr = *pte + vaddr & 0x00000FFF
+\end{lstlisting}
+
+物理内存地址等于对应表项存储的值, 当中由于表项是4K对齐的PTE 当中保存的其实是页的地址， 最终还要加上页内的便宜地址得到对应的物理地址。
+
+\subsection{多级分页支持}
+
+Intel提供了多级分页的机制，上面介绍的是3级分页， 对于x86-64系统，Intel提供了4级分页。在32位系统下，如果不启用PAE，仅仅对1G空间进行寻址，CPU可以使用2级分页。此外Intel还提供了扩展分页，这是一种以4M作为一页的分页方式。Linux定义了几个概念和结构题用来区别多级页表机制当中各个级别的名字。
+\begin{itemize}
+  \item PTE(Page Table Entry)
+  \item PMD(Page Middle Directory)
+  \item PUD(Page Upper Directory)
+  \item PGD(Page Global Directory)
+\end{itemize}
+
+\subsection{初始化}
+
+\begin{lstlisting}
+\end{lstlisting}
+
+其中pg0代表一个安全的位置，即pg0处的内存既没有代码也没有数据，是一块可以用的物理内存。
+如何才知道自己程序和数据的尾部处于内存的什么位置呢， GLD(我们常用的链接程序, GNU ld)提供了这么一种能力，我们可以在连接脚本加入一些变量，这些变量会被链接程序当作符号加载到ELF文件当中。
+这也就是为啥我们可以在arch/i386/mm/pgtable.h当中看到pg0的声明，却总找不到它定义在那个代码文件当中的原因。
+
+还有一个问题为什么每个值都要减去\_\_PAGE\_OFFSET呢，这个值有代表一个非常大的值。
+这个原因也可以从链接脚本当中找到， 在链接脚本的开始出我们可以发现这个脚本指定的其实地址是\_\_PAGE\_OFFSET + 0x100000。
+但实际上在初始化阶段我们将它仅仅加载到了0x100000。
+之后我们通过映射的方式将它们映射到\_\_PAGE\_OFFSET + 0x100000这里，之后的代码就可以顺利运行了。
+通过这机制也可以保证此后所有的内核代码都是处于0xC0000000之上的，与我们之前的约定一致。
+在启动虚拟内存之前，我们访问任何一个vmlinux上的符号，都必须使用它的物理地址，即虚拟地址-0xC0000000。
+在启用虚拟内存之后，我们就可以完全使用C程序来实现了。
+
+这也就是为什么这么一段简单的程序要使用汇编语言实现，而不用C程序实现了。
+
+常量 \_\_PAGE\_OFFSET定义了内核空间所处的位置，这个位置是虚拟地址，对于32位系统来说是4G当中最高的那1G，即0xC00000000～0xFFFFFFFF。
+在Linux下，这部分地址全部交由内核来使用，应用程序是无法直接访问的，而且对于所有的应用程序这部分的地址的内容是一样的。
+
+变量swapper\_pg\_dir是一个有1024项的数组，他就是我们初始化阶段的PGD。
+
+后边的代码就比较容易看懂了，就是不断的填满这1024项。
+
+
+有一个问题不知道读者发现了没有，这段代码如果使用C语言来实现的话应该是非常容易的是什么原因导致它没有这么做呢？
+
+这段代码执行完毕后，我们已经完成从0开始到8M部分的初始化。
+
+\subsection{FAQ}
+为何32位地址总线却只能提供30位的寻址能力？
+
+\section{Init Pagging}
+
+在架构相关的初始化真正开始时，page table的映射才开始建立，他的入口在paging\_init函数。
+这个函数定义在文件arch/i386/mm/init.c
+\begin{lstlisting}[language=C]
+static void __init pagetable_init(void) {
+  u32 addr;
+  pgd_t *pgd_base = swapper_pg_dir;
+
+  // if PSE available
+  kernel_physical_mapping_init(pgd_base);
+}
+
+void __init paging_init(void) {
+  pagetable_init();
+
+  load_cr3(swapper_pg_dir);
+
+  __flush_tlb_all();
+
+  kmap_init();
+  zone_sizes_init();
+}
+\end{lstlisting}
+
+
+真正负责页表初始化的是kernel\_physical\_mapping\_init, 他负责PGD, PMD和PTE三级页表的初始化。
+它的逻辑非常简单。
+需要注意的一定是PGD一定是连续的1024项，但是PMD和PTE就不一定了，如果上一级的页表项没有用，那么下一级根本就不需要分配空间。
+这部分细节藏在函数one\_md\_table\_init和函数one\_page\_table\_init当中。
+\begin{lstlisting}[language=C]
+/*
+ * This maps the physical memory to kernel virtual 
+ * address space, a total of max_low_pfn pages, by 
+ * creating page tables starting from address
+ * PAGE_OFFSET.
+ */
+static void __init kernel_physical_mapping_init(pgd_t *pgd_base) {
+  u32 pfn;
+  pgd_t *pgd;
+  pmd_t *pmd;
+  pte_t *pte;
+
+  int pgd_idx, pmd_idx, pte_ofs;
+
+  pgd_idx = pgd_index(PAGE_OFFSET);
+  pgd = pgd_base + pgd_idx;
+  pfn = 0;
+
+  for (; pgd_idx < PTRS_PER_PGD; pgd++, pgd_idx++) {
+    pmd = one_md_table_init(pgd);
+
+    if (pfn >= max_low_pfn) {
+      continue;
+    }
+
+    for (pmd_idx = 0; pmd_idx < PTRS_PER_PMD && pfn < max_low_pfn;
+         pmd++, pmd_idx++) {
+      pte = one_page_table_init(pmd);
+      for (pte_ofs = 0; pte_ofs < PTRS_PER_PTE && pfn < max_low_pfn;
+           pte++, pfn++, pte_ofs++) {
+        if (is_kernel_text(address)) {
+          set_pte(pte, pfn_pte(pfn, PAGE_KERNEL_EXEC));
+        } else {
+          set_pte(pte, pfn_pte(pfn, PAGE_KERNEL);
+        }
+      }
+    }
+  }
+}
+\end{lstlisting}
+
+
+\section{Page分配及释放}
+ 这一节的名字是内存的分配与释放，其实这已经包含了所有内存管理的内容。
+之所以起这个名字而非内存管理，是希望给大家一个动态的感觉：我们是以分配及释放的过程来讲述这部分内容的。
+
+内核本身占用的物理内存并不多，内核将空闲的page都分区域保存起来,这个区域就是zone。
+当内核试图分配内存时会挑选合适的区域分配若干个page并对page分配线性地址，之后linux还要更新页表。
+这个过程就是Linux分配内存的过程。
+
+
+整个过程最复杂的部分在于挑选合适的页，这个过程也是分层次的， 最底层以内存大小为目标进行分配，这个系统的叫做“伙伴系统”。
+再上一层是“面向对象”的，这个对象从C语言的角度看就是结构体，简单的理解就是建立一组内存缓冲区，缓冲区的key是结构体， 当某个结构体释放时内存将放回到这个结构体的缓冲当中，分配时则尽量从缓冲区分配，否则使用下一层的“伙伴系统”进行分配。
+除了slab之外，Linux还有其他策略。
+这些策略针对不同体系的机器，各有特斯，以后我们会逐一比较。
+从上面的描述的过程来看，这里面涉及到几个核心的概念，我们逐一的介绍。
+
+\subsection{page}
+page经常被翻译做页框，它是以4K为单元的物理内存单元(当然也可能是2M，与CPU的分页模式有关)。
+每一个page都有一个描述符与之对应，它保存着page的信息。
+
+
+在内核完成映射之后，我们实际上占用了所有的物理内存。
+\subsection{Zone}
+
+\subsubsection{HighMemory}
+内核内存从0xC000000 + 0x100000开始，0～3G的内存交给用户控件使用，而32位机器既能够寻址的最大范围是4G，再高的内存就没有办法映射了。
+其他的内存就只能放在High Memroy区域了。
+这部分内存的特点是，他们没有进行映射，需要的时候才进行映射。
+
+\subsection{page的分配与释放}
 
