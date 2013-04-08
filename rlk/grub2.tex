@@ -1,8 +1,98 @@
 \chapter{使用grub引导}
-之所以将GRUB2放入到了附录当中，是因为作者曾经花费了很多时间来设置它。
-而且在其间真的有所得。
-在使用它的过程中，读者可以了解很多计算机的概念和Linux驱动程序的概念。
+分析Linux代码是必不可少的，本章将介绍如何在磁盘镜像上安装grub并使用grub引导Linux。
+\section{安装GRUB2}
+\subsection{创建磁盘镜像}
+创建磁盘的方法很多，本质上只是创建一个指定大小的内容全部为0的文件。这里采用bximage创建磁盘，它会顺便计算出磁盘的磁道，扇区数等信息，在创建分区的时候这些信息都是必要的。
 
-\section{在虚拟磁盘上创建分区表}
-\section{在虚拟磁盘上创建文件系统}
+\begin{lstlisting}[language=bash]
+# 创建一个500M的磁盘
+ bximage
+ Do you want to create a floppy disk image or a hard disk image?
+ Please type hd or fd. [hd] 
+
+ What kind of image should I create?
+ Please type flat, sparse or growing. [flat]
+
+ Enter the hard disk size in megabytes, between 1 and 129023
+ [10] 500
+
+ I will create a 'flat' hard disk image with
+  cyl=1015
+  heads=16
+  sectors per track=63
+  total sectors=1023120
+  total size=499.57 megabytes
+\end{lstlisting}
+
+
+在完成磁盘的创建以后，还需要对磁盘创建分区并格式化。Linux有一个非常方便的工具mtools可以完成功能，它提供了一组命令不需要将磁盘镜像映射成设备就可以对其操作。默认情况下linux是包含这个工具包的，可以通过命令sudo apt-get install mtools来安装。
+\begin{lstlisting}[language=bash]
+# mpartition -I C:
+$ mpartition -cpv -t 1015 -h 16 -s 63 -b 63 C:
+$ mformat C:
+\end{lstlisting}
+
+\subsection{加载磁盘}
+在完成磁盘的创建以后，需要对磁盘镜像以块设备的方式进行操作。
+\begin{lstlisting}[language=bash]
+$ sudo losetup /dev/loop0 c.img
+$ ls -l /dev/loop0
+brw-rw---- 1 root disk 7, 0 Feb  4 14:56 /dev/loop0 # 7, 0 是主，次设备号
+# 为磁盘的分区建立设备映射
+$ sudo kpartx -v -a /dev/loop0
+# 将分区映射到设备 /dev/loop1上
+$ sudo losetup /dev/loop1 /dev/mapper/loop0p1
+# 格式化磁盘
+\end{lstlisting}
+
+\subsection{安装grub2}
+
+\begin{lstlisting}[language=bash]
+$ sudo grub-install --no-floppy \
+       --root-directory=/mnt \
+       --modules=''fat ext2 part_msdos''  /dev/loop1
+\end{lstlisting}
+
+将c.img作为启动盘启动qemu，此时已经可以看到GRUB2的提示符号了
+\begin{lstlisting}
+qemu-system-i386 -hda c.img
+\end{lstlisting}
+
+\subsection{关闭磁盘映射}
+\begin{lstlisting}[language=bash]
+# 关闭映射设备
+$ sudo kpartx -d /dev/loop1
+$ sudo losetup -d /dev/loop1
+$ sudo losetup -d /dev/loop0
+\end{lstlisting}
+\section{安装Linux}
+\subsection{安装内核文件}
+将编译成功的Linux拷贝到文件镜像下，通常这个文件处于
+arch/x86/boot/vmlinux
+\begin{lstlisting}[language=bash]
+mcopy arch/x86/boot/vmlinux c:
+\end{lstlisting}
+\subsection{配置grub}
+打开一个文件并输入
+\begin{lstlisting}[language=bash]
+
+menuentry "My Linux Kernel" {
+  set root='(hd0,msdos1)'
+  linux /linux/vmlinuz ro
+  initrd /linux/initrd.img
+  insmod gzio
+  insmod part_msdos
+  insmod ext2
+}
+mcopy grub.cfg c:/boot/
+\end{lstlisting}
+
+
+\subsection{启动}
+启动qemu，在启动grub cli之后输入
+\begin{lstlisting}[language=bash]
+grub> configfile /boot/grub.cfg
+grub> boot
+\end{lstlisting}
+此时应该可以在屏幕当中看到内核启动了。
 \section{安装GRUB2}
