@@ -1,0 +1,37 @@
+\documentclass{article}
+
+\usepackage[left=3.1cm,right=2.5cm,top=3.17cm,footskip=1.5cm,bottom=3cm,includefoot]{geometry}
+\usepackage{listings}
+\lstset{language=tex, showspaces=true, aboveskip=0pt, belowskip=20pt,
+  frame=single}
+\begin{document}
+
+\begin{minipage}[t]{0.6\textwidth}
+\begin{lstlisting}
+\begin{enumerate}
+    \item first
+    \item second
+\end{enumerate}
+\end{lstlisting}
+\end{minipage}
+\hfill
+\begin{minipage}[t]{0.3\textwidth}
+\begin{enumerate}
+    \item first
+    \item second
+\end{enumerate}
+\end{minipage}
+
+
+\begin{minipage}[t]{0.6\textwidth}
+\begin{lstlisting}
+This is \textbf{different} style 
+for \textsc{font}.
+\end{lstlisting}
+\end{minipage}
+\hfill
+\begin{minipage}[t]{0.3\textwidth}
+    This is \textbf{different} style for \textsc{font}.
+\end{minipage}
+
+\end{document}

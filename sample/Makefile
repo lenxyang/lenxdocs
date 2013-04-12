@@ -1,7 +1,13 @@
 
-openpdf = ~/.emacs.d/shell/openpdf.sh
+openpdf = /opt/sumatra/pdfview
 latex=xelatex
 
+default: codeperf.pdf
+
 tabularx.pdf: tabularx.tex
-	$(latex) $?
+	$(latex) $@
+	@$(openpdf) $
+
+codeperf.pdf: codeperf.tex
+	$(latex) $@
 	@$(openpdf) $

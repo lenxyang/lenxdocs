@@ -5,6 +5,12 @@
 \subsection{gdb基本原理}
 \subsection{调试信息}
 
+\section{使用qemu跟踪Linux}
+qemu提供了kernel选项用于指定内核镜像，通过如下命令linux将直接启动。
+\begin{lstlisting}
+qemu-system-i386 -kernel bzImage -gdb tcp::1234,nowait,nodelay,server,ipv4 -S
+\end{lstlisting}
+
 \section{使用bochs内置调试器}
 bochs提供了一个内置调试题，只需要在配置文件当中添加如下一行便可以启动调试器了。带有调试器的bochs一开始运行便会自动定下，而后等待用户命令。
 既然有了功能强大且通用的调试器gdb，为什么还需要bochs的内置调试器呢？它确实有着不可替代的作用，尤其是在刚开始入手的时候，内置调试的功能是gdb无法替代的。1
