@@ -3,6 +3,7 @@
 \input{setting}
 \begin{document}
 \title{使用gdb+qemu调试Linux}
+\author{lenxyang}
 \maketitle
 \section{启动阶段} 
 Linux的内存模型规定内核态必须处于0xC000000以上的内存当中，而在系统启动阶段分页机制并未启动，这时候Linux的C程序的所有符号都处于这个界限之上，此时内核的C代码是没有办法直接运行的。因此vmlinux的起始部分代码只能通过汇编编写(在访问任意符号的时候，汇编语言可以通过读符号地址进行运算求得符号的物理而后进行操作)。这部分代码的主要工作就是初始化分页并启动分页机制，之后vmlinux就由物理内存的0x01000000处被映射在了虚拟地址的0xC1000000处，这时候所有代码都可以通过虚拟地址来访问符号了，C程序就可以正常工作了。
@@ -180,4 +181,5 @@ x86架构下提供了两种分页机制，分别为两级和三级，对于i386 
     movl %eax,%cr0          /* ..and set paging (PG) bit */
     ljmp $__BOOT_CS,$1f     /* Clear prefetch and normalize %eip */
 \end{lstlisting}
+在经过ljmp之后，系统进入到虚拟内存工作了，此时gdb已经可以将符号地址与虚拟地址相对应，调试时不需要再依赖于反汇编而可以进行源代码级调试了。这是一次飞跃，从此之后，调试程序进入一片坦途。
 \end{document}

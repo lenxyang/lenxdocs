@@ -1,0 +1,22 @@
+\documentclass[b5paper,9pt,twoside,openany]{article}
+
+\input{setting}
+\begin{document}
+\title{early-param分析}
+\author{lenxyang}
+\maketitle
+\section{early-param}
+early-param是Linux早期初始化的框架，它通过字符串及函数指针建立一个初始化表。在进入保护模式之前，Linux将实模式下通过BIOS提供的中断功能获取很多参数，在进入保护模式之后Linux将通过之前的配置项对这些参数进行解析而后根据参数进行初始化。
+
+early-param负责初始化的功能包含:
+
+\begin{tabular}{|c|c|c|}
+\hline
+早期的printk | early-printk | arch/x86/kernel/early-printk.c \\
+\hline
+e820内存 | initmem  | arch/x86/kernel/e820.c \\
+\end{tabular}
+\section{early-param配置方式}
+
+\section{early-param框架}
+\end{document}
