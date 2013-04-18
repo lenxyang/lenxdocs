@@ -5,13 +5,78 @@
 \title{使用gdb+qemu调试Linux}
 \author{lenxyang}
 \maketitle
-\section{工具配置}
-首先安装qemu并编译linux内核，而后为Linux提供一个磁盘镜像，创建磁盘镜像使用dd命令即可
+\section{配置磁盘镜像}
 \begin{lstlisting}[language=bash]
-dd if=/dev/zero of=c.img bs=1024k count=10
-mkfs.ext3 c.img
+# 创建一个500M的磁盘
+ bximage
+ Do you want to create a floppy disk image or a hard disk image?
+ Please type hd or fd. [hd] 
+
+ What kind of image should I create?
+ Please type flat, sparse or growing. [flat]
+
+ Enter the hard disk size in megabytes, between 1 and 129023
+ [10] 500
+
+ I will create a 'flat' hard disk image with
+  cyl=1015
+  heads=16
+  sectors per track=63
+  total sectors=1023120
+  total size=499.57 megabytes
+\end{lstlisting}
+
+在完成磁盘的创建以后，还需要对磁盘创建分区并格式化。Linux有一个非常方便的工具mtools可以完成功能，它提供了一组命令不需要将磁盘镜像映射成设备就可以对其操作。默认情况下linux是包含这个工具包的，可以通过命令sudo apt-get install mtools来安装。
+\begin{lstlisting}[language=bash]
+# mpartition -I C:
+$ mpartition -cpv -t 1015 -h 16 -s 63 -b 63 C:
+\end{lstlisting}
+
+\subsection{加载磁盘镜像}
+在完成磁盘的创建以后，需要对磁盘镜像以块设备的方式进行操作。
+\begin{lstlisting}[language=bash]
+$ sudo losetup /dev/loop0 c.img
+$ ls -l /dev/loop0
+brw-rw---- 1 root disk 7, 0 Feb  4 14:56 /dev/loop0 # 7, 0 是主，次设备号
+# 为磁盘的分区建立设备映射
+$ sudo kpartx -v -a /dev/loop0
+# 将分区映射到设备 /dev/loop1上
+$ sudo losetup /dev/loop1 /dev/mapper/loop0p1
+# 格式化磁盘
+$ sudo mkfs.ext2 /dev/loop1
+\end{lstlisting}
+
+\subsection{安装grub2}
+
+\begin{lstlisting}[language=bash]
+$ sudo grub-install --no-floppy \
+       --root-directory=/mnt \
+       --modules=''fat ext2 part_msdos''  /dev/loop0
+\end{lstlisting}
+将c.img作为启动盘启动qemu，此时已经可以看到GRUB2的提示符号了
+\begin{lstlisting}
+qemu-system-i386 -hda c.img
+\end{lstlisting}
+
+\subsection{安装Linux}
+创建文件/mnt/boot/grub/grub.cfg
+\begin{lstlisting}[language=bash]
+
+menuentry "My Linux Kernel" {
+  set root='(hd0,msdos1)'
+  linux /vmlinuz ro
+  initrd /initrd.img
+  insmod gzio
+  insmod part_msdos
+  insmod ext2
+}
+\end{lstlisting}
+
+将生成的Linux的两个文件vmlinux和initrd.img拷贝过去。这两个文件在make install的时候会被拷贝到本地/boot目录下，从哪里copy到/mnt/下即可。
+
+\section{创建系统目录}
+\begin{lstlisting}[language=bash]
 # 安装文件系统
-sudo mount -t ext3 -o loop c.img /mnt
 # 将busybox生成的文件coyp /mnt下
 # 创建配置文件
 sudo mkdir /mnt/etc
@@ -45,7 +110,14 @@ sudo mknod /mnt/dev/null c 1 1
 qemu-system-i386  -hda rootfs.img -m 256 -kernel bzImage -append "root=/dev/hda"
 \end{lstlisting}
 
-\section{启动阶段} 
+\subsection{卸载磁盘}
+在完成上面的操作以后，卸载对应的设备。
+\begin{lstlisting}[language=bash]
+# 关闭映射设备
+$ sudo kpartx -d /dev/loop1
+$ sudo losetup -d /dev/loop1
+$ sudo losetup -d /dev/loop0
+\end{lstlisting}
 
 \section{编译内核}
 为了能够使gdb尽量无障碍的跟踪Linux，在编译期间必须对Linux的某些编译选项进行更改。
@@ -65,9 +137,9 @@ qemu-system-i386  -hda rootfs.img -m 256 -kernel bzImage -append "root=/dev/hda"
 \begin{itemize}
 \item 去掉“Device Drivers”->“Character devices”->“ACP Modem (Mwave) support”
 在改掉-O2为-O0之后，mware会编译出问题(2.6.32.60)，它是不是必要的去掉它就好。
-\item arch/x86/mm/memtest.c:50: undefined reference to `__udivdi3'
-\item drivers/serial/serial_core.c:759: undefined reference to `tty_port_users'
-\item mm/slab.c:343: undefined reference to `__bad_size'
+\item arch/x86/mm/memtest.c:50: undefined reference to `\_\_udivdi3'
+\item drivers/serial/serial\_core.c:759: undefined reference to `tty\_port\_users'
+\item mm/slab.c:343: undefined reference to `\_\_bad\_size'
 在 mm/Makefile当中增加一行
 \begin{lstlisting}
 CFLAGS_slab.o = -O2

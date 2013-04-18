@@ -50,7 +50,7 @@ $ sudo losetup /dev/loop1 /dev/mapper/loop0p1
 \begin{lstlisting}[language=bash]
 $ sudo grub-install --no-floppy \
        --root-directory=/mnt \
-       --modules=''fat ext2 part_msdos''  /dev/loop1
+       --modules=''fat ext2 part_msdos''  /dev/loop0
 \end{lstlisting}
 
 将c.img作为启动盘启动qemu，此时已经可以看到GRUB2的提示符号了

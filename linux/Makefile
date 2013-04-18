@@ -1,13 +1,17 @@
 output=../out/
 
 # default: debug_with_qemu.pdf early_param.pdf bootmem.tex
-default: bootmem.pdf
+default: debug.pdf
+
+debug.pdf: debug.tex
+	xelatex $?
+	cp $@ ${output}
+	/opt/sumatra/pdfview ${output}/$@
 
 debug_with_qemu.pdf: debug_with_qemu.tex
 	xelatex debug_with_qemu.tex
 	cp $@ ${output}
 	/opt/sumatra/pdfview ${output}/$@
-
 
 early_param.pdf: early_param.tex
 	xelatex $?

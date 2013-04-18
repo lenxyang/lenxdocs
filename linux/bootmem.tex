@@ -4,7 +4,183 @@
 \input{setting}
 \begin{document}
 \title{MM及初始化内存管理}
+\section{启动}
+Linux的内存模型规定内核态必须处于0xC000000以上的内存当中，而在系统启动阶段分页机制并未启动，这时候Linux的C程序的所有符号都处于这个界限之上，此时内核的C代码是没有办法直接运行的。因此vmlinux的起始部分代码只能通过汇编编写(在访问任意符号的时候，汇编语言可以通过读符号地址进行运算求得符号的物理而后进行操作)。这部分代码的主要工作就是初始化分页并启动分页机制，之后vmlinux就由物理内存的0x01000000处被映射在了虚拟地址的0xC1000000处，这时候所有代码都可以通过虚拟地址来访问符号了，C程序就可以正常工作了。
+由于工作在物理内存上而gdb将vmlinux的符号表映射到物理内存，这部分代码的调试是比较麻烦的。接下来会介绍调试的步骤及代码分析，顺利通过这部分代码以后，内核将工作在虚拟内存地址上，gdb就可以实现代码级调试的了。
 
+\section{启动调试}
+在Linux启动时期并未启动分页机制，如果希望调试它必须使用gdb的硬件调试指令，比如设置断点使用hbreak命令。Linux启动之前加载程序会将它加载到物理内存0x01000000处。它的物理地址位于0x01000000处，也就是函数startup\_32的起始地址，它是vmlinux的入口地址。startup\_32是一个很长的函数，此处列出了部分重要部分的地址以方便用户设置断点。
+
+\begin{tabular}{|c|c|c|c|}
+\hline
+作用  & 地址 & 结束地址 & 文件位置 \\
+\hline
+startup\_32 & 0x01000000 & 0x0100001d & kernel/head\_32.S:83 \\
+\hline
+清空bss段 & 0x0100001d & 0x01000031 & kernel/head\_32.S:103 \\
+\hline
+设置bootparam & 0x01000031 & 0x01000054 & kernel/head\_32.S:118 \\
+\hline
+x86子架构 & 0x01000054 & 0x01000077 & head\_32.S:145 \\
+\hline
+paging init & 0x0100007b & 0x010000cc & head\_32.S:174 \\
+\hline
+\end{tabular}
+
+\subsection{x86子架构初始化}
+在x86进入到保护模式之后，Linux会根据bootparam参数确定CPU类型并启动对应的初始代码。
+\begin{lstlisting}
+/* Paravirt-compatible boot parameters.  Look to see what architecture
+ we're booting under. */
+    movl pa(boot_params + BP_hardware_subarch), %eax
+    cmpl $num_subarch_entries, %eax
+    jae bad_subarch
+
+    movl pa(subarch_entries)(,%eax,4), %eax
+    subl $__PAGE_OFFSET, %eax
+    jmp *%eax
+bad_subarch:
+    ud2
+subarch_entries:
+    .long default_entry             /* normal x86/PC */
+    .long lguest_entry              /* lguest hypervisor */
+    .long xen_entry                 /* Xen hypervisor */
+    .long default_entry             /* Moorestown MID */
+\end{lstlisting}
+一般情况下，我们会进入到default\_entry继续运行。
+\subsection{启动分页模式}
+default\_entry的开始部分是分页模式的初始化，此处的代码按照两种模式实现（PAE模式及非PAE模式），PAE模式打开后能够访问64G物理内存。为了简化操作，我们需要将PAE关闭，在编译内核时大家可以查找"", 关闭它就好。
+ 
+\lstset{language=[Motorola68k]Assembler, escapechar=@,style=gnuasmcode}
+\begin{lstlisting}
+page_pde_offset = (__PAGE_OFFSET >> 20);
+    movl $pa(__brk_base), %edi
+    movl $pa(swapper_pg_dir), %edx
+    movl $PTE_IDENT_ATTR, %eax
+10:
+    leal PDE_IDENT_ATTR(%edi),%ecx          /* Create PDE entry */
+    movl %ecx,(%edx)                        /* Store identity PDE entry */
+    movl %ecx,page_pde_offset(%edx)         /* Store kernel PDE entry */
+    addl $4,%edx
+    movl $1024, %ecx
+11:
+    stosl
+    addl $0x1000,%eax
+    loop 11b
+    /*
+     * 是否覆盖到了结尾处, _end定义在vmlinux.lds.S，它是vmlinux末尾的地址
+     */
+    movl $pa(_end) + MAPPING_BEYOND_END + PTE_IDENT_ATTR, %ebp
+    cmpl %ebp,%eax
+    jb 10b
+    addl $__PAGE_OFFSET, %edi
+    movl %edi, pa(_brk_end)
+    shrl $12, %eax
+    movl %eax, pa(max_pfn_mapped)
+    /* Do early initialization of the fixmap area */
+    movl $pa(swapper_pg_fixmap)+PDE_IDENT_ATTR,%eax
+    movl %eax,pa(swapper_pg_dir+0xffc)
+
+    jmp  3f
+\end{lstlisting}
+有几个符号需要介绍一下， pa(physical address)是将虚拟地址转化为物理地址的一个宏，基本实现就是用符号的地址减去 PAGE\_OFFSET(这个值通常是0xC0000000).变量swapper\_pg\_dir用来保存PTE，而\_\_brk\_base用于保存PTE。
+PDE\_IDENT\_ATTR是每个表项的属性值，GNUAS通过lea指令来计算。
+
+\subsubsection{PTE的地址}
+\_\_brk\_base是一个特殊的地址，这个地址的标识了vmlinux的尾部，也就是说在vmlinux在加入如内存之后，从\_\_brk\_base之后就没有vmlinux的数据和地址了，主部分内存是安全可用的。\_\_brk\_base只有在链接结束以后确定，所以它只能通过lds(ld script)来定义。以下代码节选自arch/x86/kernel/vmlinux.lds.S。
+\begin{lstlisting}
+. = ALIGN(PAGE_SIZE);
+  .brk : AT(ADDR(.brk) - LOAD_OFFSET) {__brk_base = .;
+  . += 64 * 1024;      /* 64k alignment slop space */
+  *(.brk_reservation)  /* areas brk users have reserved */
+  __brk_limit = .;
+}
+\end{lstlisting}
+
+\subsubsection{覆盖地址}
+\begin{lstlisting}
+/*
+ * This is how much memory in addition to the memory covered up to
+ * and including _end we need mapped initially.
+ * We need:
+ *     (KERNEL_IMAGE_SIZE/4096) / 1024 pages (worst case, non PAE)
+ *     (KERNEL_IMAGE_SIZE/4096) / 512 + 4 pages (worst case for PAE)
+ *
+ * Modulo rounding, each megabyte assigned here requires a kilobyte of
+ * memory, which is currently unreclaimed.
+ *
+ * This should be a multiple of a page.
+ *
+ * KERNEL_IMAGE_SIZE should be greater than pa(_end)
+ * and small than max_low_pfn, otherwise will waste some page table entries
+ */
+
+#if PTRS_PER_PMD > 1
+#define PAGE_TABLE_SIZE(pages) (((pages) / PTRS_PER_PMD) + PTRS_PER_PGD)
+#else
+#define PAGE_TABLE_SIZE(pages) ((pages) / PTRS_PER_PGD)
+#endif
+
+/* Enough space to fit pagetables for the low memory linear map */
+MAPPING_BEYOND_END = \
+        PAGE_TABLE_SIZE(((1<<32) - __PAGE_OFFSET) >> PAGE_SHIFT) << PAGE_SHIFT
+... 
+    movl $pa(_end) + MAPPING_BEYOND_END + PTE_IDENT_ATTR, %ebp
+    cmpl %ebp,%eax
+    jb 10b
+\end{lstlisting}
+从上面的代码可以看到当初始化到某个值，页表就不再创建了，这个值就是page机制的覆盖范围，这个范围虽然是连续的，但却分成了两个部分，第一部分从0x00000000~0x00010000（物理内存的前1M），这里有许多用于特殊作用的内存，它们的虚拟地址与物理地址相同。第二部分就是内核内存了，在初始化阶段内核映射了1M～8M这个范围的内存到虚拟地址0xC1000000到0xC80000000上。
+
+\subsubsection{初始化PTE}
+PTE表项的内容保存在\%eax当中，它的初始值从0x0开始并带有属性PTE\_IDENT\_ATTR，它定义在文件arch/x86/include/asm/pgtable\_types.h当中。
+\begin{lstlisting}
+#define PTE_IDENT_ATTR   0x003          /* PRESENT+RW */
+\end{lstlisting}
+
+每一个PGD对应1024个PTE，通过stosl指令进行初始化，其中\%eax当中包含。
+\begin{lstlisting}
+    movl $PTE_IDENT_ATTR, %eax
+10:
+   /* 初始化 PGD */
+   ...
+    movl $1024, %ecx
+11:
+    stosl
+    addl $0x1000,%eax
+    loop 11b
+\end{lstlisting}
+上面的代码仅仅初始化了PTE项，大小保存存在\%ebp当中没初始化完成1024项都会比较一下以确定是否需要创建新的PTE项。
+
+\subsubsection{常量}
+x86架构下提供了两种分页机制，分别为两级和三级，对于i386 4G虚拟内存来说，采用了是两级地址映射，第一级叫做PGD(paging global dir)，从第32位到第23位共10位，1024项，PTE(Page Table Entry)从第22位到第13位共10位，每一个PGD项包含1024个PTE项。这些常量定义在arch/x86/include/asm/pgtable-2level\_types.h（如果采用三级映射，那么常量定义在arch/x86/include/asm/pgtable-3level\_types.h）。
+\begin{lstlisting}
+#define PAGETABLE_LEVELS        2
+
+#define PGDIR_SHIFT     22
+#define PTRS_PER_PGD    1024
+
+#define PTRS_PER_PTE    1024
+\end{lstlisting}
+
+\subsubsection{启动分页}
+分页机制的启动需要三个步骤
+\begin{itemize}
+\item 设置PGD的入口地址到CR3
+\item 设置CR0寄存器的PG位
+\item 跳转至一下跳指令虚拟地址(否则将继续在当前地址运行,很有可能出错)
+\end{itemize}
+\begin{lstlisting}
+/*
+ * Enable paging
+ */
+    movl pa(initial_page_table), %eax
+    movl %eax,%cr3          /* set the page table pointer.. */
+    movl %cr0,%eax
+    orl  $X86_CR0_PG,%eax
+    movl %eax,%cr0          /* ..and set paging (PG) bit */
+    ljmp $__BOOT_CS,$1f     /* Clear prefetch and normalize %eip */
+\end{lstlisting}
+在经过ljmp之后，系统进入到虚拟内存工作了，此时gdb已经可以将符号地址与虚拟地址相对应，调试时不需要再依赖于反汇编而可以进行源代码级调试了。这是一次飞跃，从此之后，调试程序进入一片坦途。
 \section{e820}
 \subsection{e820}
 在实模式Linux通过e820获取到内存的分段信息，而后通过boot\_params传递给保护模式内核。在保护模式启动后，boot\_params的指针保存在寄存器\%esi当中，内核会将这段内存复制到保护模式下的boot\_params符号当中。
