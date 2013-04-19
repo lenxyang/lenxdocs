@@ -5,6 +5,70 @@
 \title{使用gdb+qemu调试Linux}
 \author{lenxyang}
 \maketitle
+\section{编译内核}
+编译内核是个既简单又复杂的任务，最简单的只要执行
+\begin{lstlisting}
+make menuconfig
+make
+make install
+\end{lstlisting}
+编译内核就算完成了，但这种内核肯定是不能用于跟踪调试的。它包含的内容太多，、
+\begin{itemize}
+\item SMP架构支持
+\item x86 PAE, PSE的支持
+\item APIC
+\item 各类driver
+\end{itemize}
+有太多的东西影响实现，让内核看起来非常复杂，没一部分都要认真的去读Intel的手册，而为了阅读那么由简入繁，某些硬件细节还是应该尽量去掉。
+\subsection{去除不必要的功能}
+\begin{itemize}
+\item Processor type and features
+\begin{itemize}
+\item 去除Symmetric multi-processing support
+\item 选择"High Memory Support (4GB)"
+\item 去掉Allocate 3rd-level pagetables from highmem
+\item Generic Driver Options
+\end{itemize}
+\item Device Drivers
+\begin{itemize}
+\item Multimedia support
+\item Sound card support
+\item HID Devices
+\item Sony MemoryStick card support
+\end{itemize}
+\item{File systems}
+\begin{itemize}
+\item The Extended 4 (ext4) filesystem
+\item Network File Systems
+\end{itemize}
+\end{itemize}
+
+\subsection{添加完整的调试信息}
+完整的调试信息能够帮助我们方便的跟踪内核的执行路径，调用栈，观察变量和内存的变化等等。这对于初学内核的人都有莫大的帮助。
+\begin{itemize}
+\item 选中Kernel Hacking当中的“Compile the kernel with debug info”
+这一点比较容易理解，在编译完成之后会生成一个带有调试信息的vmlinux文件，此文件当中包含对应的符号信息及源代码信息。gdb可以将此文件作为符号文件加载以进行源代码级调试，这对于跟踪代码来说是必不可少的。
+\item 在General setup当中去掉 “Optimize for size”并将Makefile当中的“KBUILD\_CFLAGS   += -O2”的-O2改为-O0
+带有调试信息之后，用户可以进行源代码级调试。但如果启用O2调试选项，在gdb跟踪代码时，当前代码就会跳来跳去，因为编译器调整了代码的顺序；此外一些变量被优化掉了，没有办法直接查看它的值，这对跟踪代码来说都不方便。通过将O2改为-O能够禁用掉大多数优化策略，已经够用了，根本不用优化将无法通过编译，因此可以也不得不保留一部分优化。
+实际上GCC提供了很多优化选项，而-O3, -Os, -O2, -O1和-O0不过是包含了这些具体优化选项的自己，如果希望了解具体的优化选项可以通过man gcc查阅。
+\item 选中Kernel Hacking当中的“Compile the kernel with frame pointers”
+如果不包含此选项，GCC将使用-fomit-frame-pointer进行编译，gdb将无法打出完整的backtrace信息，给跟踪代码带来不便。
+
+\item 选中Kernel Hacking当中的“Allow gcc to uninline functions marked 'inline'”
+\end{itemize}
+
+\subsection{可能出现的错误}
+\begin{itemize}
+\item 去掉“Device Drivers”->“Character devices”->“ACP Modem (Mwave) support”
+在改掉-O2为-O0之后，mware会编译出问题(2.6.32.60)，它是不是必要的去掉它就好。
+\item arch/x86/mm/memtest.c:50: undefined reference to `\_\_udivdi3'
+\item drivers/serial/serial\_core.c:759: undefined reference to `tty\_port\_users'
+\item mm/slab.c:343: undefined reference to `\_\_bad\_size'
+在 mm/Makefile当中增加一行
+\begin{lstlisting}
+CFLAGS_slab.o = -O2
+\end{lstlisting}
+\end{itemize}
 \section{配置磁盘镜像}
 \begin{lstlisting}[language=bash]
 # 创建一个500M的磁盘
@@ -107,7 +171,7 @@ sudo mknod /mnt/dev/null c 1 1
 
 \subsection{运行qemu}
 \begin{lstlisting}[language=bash]
-qemu-system-i386  -hda rootfs.img -m 256 -kernel bzImage -append "root=/dev/hda"
+qemu-system-i386  -hda c.img -m 256
 \end{lstlisting}
 
 \subsection{卸载磁盘}
@@ -119,31 +183,14 @@ $ sudo losetup -d /dev/loop1
 $ sudo losetup -d /dev/loop0
 \end{lstlisting}
 
-\section{编译内核}
-为了能够使gdb尽量无障碍的跟踪Linux，在编译期间必须对Linux的某些编译选项进行更改。
-\begin{itemize}
-\item 选中Kernel Hacking当中的“Compile the kernel with debug info”
-这一点比较容易理解，在编译完成之后会生成一个带有调试信息的vmlinux文件，此文件当中包含对应的符号信息及源代码信息。gdb可以将此文件作为符号文件加载以进行源代码级调试，这对于跟踪代码来说是必不可少的。
-\item 在General setup当中去掉 “Optimize for size”并将Makefile当中的“KBUILD\_CFLAGS   += -O2”的-O2改为-O0
-带有调试信息之后，用户可以进行源代码级调试。但如果启用O2调试选项，在gdb跟踪代码时，当前代码就会跳来跳去，因为编译器调整了代码的顺序；此外一些变量被优化掉了，没有办法直接查看它的值，这对跟踪代码来说都不方便。通过将O2改为-O能够禁用掉大多数优化策略，已经够用了，根本不用优化将无法通过编译，因此可以也不得不保留一部分优化。
-实际上GCC提供了很多优化选项，而-O3, -Os, -O2, -O1和-O0不过是包含了这些具体优化选项的自己，如果希望了解具体的优化选项可以通过man gcc查阅。
-\item 选中Kernel Hacking当中的“Compile the kernel with frame pointers”
-如果不包含此选项，GCC将使用-fomit-frame-pointer进行编译，gdb将无法打出完整的backtrace信息，给跟踪代码带来不便。
-
-\item 选中Kernel Hacking当中的“Allow gcc to uninline functions marked 'inline'”
-\end{itemize}
-
-\subsection{可能出现的错误}
-\begin{itemize}
-\item 去掉“Device Drivers”->“Character devices”->“ACP Modem (Mwave) support”
-在改掉-O2为-O0之后，mware会编译出问题(2.6.32.60)，它是不是必要的去掉它就好。
-\item arch/x86/mm/memtest.c:50: undefined reference to `\_\_udivdi3'
-\item drivers/serial/serial\_core.c:759: undefined reference to `tty\_port\_users'
-\item mm/slab.c:343: undefined reference to `\_\_bad\_size'
-在 mm/Makefile当中增加一行
-\begin{lstlisting}
-CFLAGS_slab.o = -O2
+\section{调试}
+\subsection{运行qemu}
+\begin{lstlisting}[language=bash]
+qemu-system-i386  -hda c.img -m 256 -gdb tcp::1234,nowait,nodelay,server,ipv4 -S
 \end{lstlisting}
+\begin{itemize}
+\item -gdb tcp::1234,nowait,nodelay,server,ipv4 启动gdb调试server
+\item -S qemu启动之后就会停止，指导gdb通知其继续运行
 \end{itemize}
 
 \end{document}
