@@ -107,7 +107,8 @@ $ sudo kpartx -v -a /dev/loop0
 # 将分区映射到设备 /dev/loop1上
 $ sudo losetup /dev/loop1 /dev/mapper/loop0p1
 # 格式化磁盘
-$ sudo mkfs.ext2 /dev/loop1
+# 注意此处应设用ext3而非ext2, 否则linux无法安装磁盘系统
+$ sudo mkfs.ext3 /dev/loop1
 \end{lstlisting}
 
 \subsection{安装grub2}
@@ -115,9 +116,9 @@ $ sudo mkfs.ext2 /dev/loop1
 \begin{lstlisting}[language=bash]
 $ sudo grub-install --no-floppy \
        --root-directory=/mnt \
-       --modules=''fat ext2 part_msdos''  /dev/loop0
+       --modules="fat ext2 part_msdos"  /dev/loop0
 \end{lstlisting}
-将c.img作为启动盘启动qemu，此时已经可以看到GRUB2的提示符号了
+将c.img作为启动盘启动qemu，此时已经可以看到GRUB2的提示符号了。有一点需要注意：前面提过虚拟镜像采用ext3文件系统，而此处加载的确实ext2 modules，这不会引起什么问题。系统可以将ext3的文件系统当作ext2来加载而不会出现问题，此外GRUB2也没有ext3这个模块。
 \begin{lstlisting}
 qemu-system-i386 -hda c.img
 \end{lstlisting}
@@ -138,6 +139,12 @@ menuentry "My Linux Kernel" {
 
 将生成的Linux的两个文件vmlinux和initrd.img拷贝过去。这两个文件在make install的时候会被拷贝到本地/boot目录下，从哪里copy到/mnt/下即可。
 
+\subsection{编译busybox}
+在编译之前修改编译选线
+\begin{itemize}
+\item 选中 "Build BusyBox as a static binary (no shared libs)"
+\item 去除 "Networking Utilities"-> "inetd"
+\end{itemize}
 \section{创建系统目录}
 \begin{lstlisting}[language=bash]
 # 安装文件系统
@@ -152,6 +159,7 @@ mount -t proc non /proc
 mount -t sysfs non /sys
 /bin/sh
 mv cp /tmp/tmp.a  /mnt/etc/rc.d/rc.sysinit
+sudo chmod a+x /mnt/etc/rc.d/rc.sysinit
 cat > /tmp/tmp.a
 # This is the first script to run when startup
 ::sysinit:/etc/rc.d/rc.sysinit

@@ -206,6 +206,10 @@ x86架构下提供了两种分页机制，分别为两级和三级，对于i386 
 000000007fff0000-0000000080000000 (ACPI Tables)
 00000000fffc0000-0000000100000000 (reserved)
 \end{lstlisting}
+\subsection{通过dmesg查看}
+上面的map实际上是BISO初始化的分布，在系统初始化过程中对其中的一部分进行了修改，如图所示。
+
+\includegraphics[scale=0.25]{images/e820}
 
 \subsection{通过early\_res分配内存}
 e820仅仅保存了内存的布局信息，为了分配内存还需要做出进一步的努力以帮助系统记录那些内存被占用而那些内存仍可以被使用。在bootmem启动之前，承担这个责任的是early\_res，它与e820同样定义在文件arch/x86/kerenl/e820.c当中。结构体early\_res和它的一个全局数组early\_res便是记录内存分配信息的容器。

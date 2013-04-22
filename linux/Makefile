@@ -1,7 +1,7 @@
 output=../out/
 
 # default: debug_with_qemu.pdf early_param.pdf bootmem.tex
-default: debug.pdf
+default: bootmem.pdf
 
 debug.pdf: debug.tex
 	xelatex $?
