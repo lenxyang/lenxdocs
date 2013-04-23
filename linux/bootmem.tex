@@ -301,6 +301,9 @@ void __init setup_bootmem_allocator(void) {
 
 它的意思实际上是分配的内存可以在之后的分配时被overlap，即被使用。
 
+\subsection{early\_res的应用场景}
+
+
 \section{bootmem}
 \subsection{为何需要bootmem}
 bootmem的主要代码在mm/bootmem.c当中，从路径就可以看出bootmem已经是一个架构无关的内存管理框架了。
