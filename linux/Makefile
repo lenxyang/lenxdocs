@@ -20,5 +20,6 @@ early_param.pdf: early_param.tex
 
 bootmem.pdf: bootmem.tex
 	xelatex $?
+	xelatex $?
 	cp $@ ${output}
 	/opt/sumatra/pdfview ${output}/$@

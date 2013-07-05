@@ -1,7 +1,7 @@
 
 default: sample.pdf
 
-sample.pdf: sample.tex fig1.eps box1.eps lines1.eps
+sample.pdf: sample.tex fig1.eps
 	xelatex sample.tex
 	/opt/sumatra/pdfview.exe $@	
 fig1.eps: fig.mp

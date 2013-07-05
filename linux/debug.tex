@@ -201,4 +201,38 @@ qemu-system-i386  -hda c.img -m 256 -gdb tcp::1234,nowait,nodelay,server,ipv4 -S
 \item -S qemu启动之后就会停止，指导gdb通知其继续运行
 \end{itemize}
 
+\section{编译内核}
+除了前面提到的需要去掉的编译选项，还有很多是无用的（对于研究内核来说），把他们去掉可以帮助我们更加专注与核心目标。
+\begin{itemize}
+  \item Processor type and features
+  \begin{itemize}
+    \item High Resolution Timer Support
+    \item Symmetric multi-processing support
+    \item Paravirtualized guest support
+    \item Processor family (386)
+    \item PentiumPro memory ordering errata workaround
+    \item /dev/cpu/microcode - microcode support
+    \item /dev/cpu/*/msr - Model-specific register support
+  \end{itemize}
+
+  \item Power management and ACPI options 
+  \begin{itemize}
+    
+  \end{itemize}
+
+  \item Networking support
+  \begin{itemize}
+    \item CAN bus subsystem support
+    \item IrDA (infrared) subsystem support
+    \item Bluetooth subsystem support
+    \item RxRPC session sockets
+    \item Wireless
+    \item WiMAX Wireless Broadband support
+    \item RF switch subsystem support
+    \item Plan 9 Resource Sharing Support (9P2000) (Experimental)
+  \end{itemize}
+
+  \item Firmware Drivers 全部去掉
+  \item 
+\end{itemize}
 \end{document}

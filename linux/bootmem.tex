@@ -206,10 +206,14 @@ x86架构下提供了两种分页机制，分别为两级和三级，对于i386 
 000000007fff0000-0000000080000000 (ACPI Tables)
 00000000fffc0000-0000000100000000 (reserved)
 \end{lstlisting}
-\subsection{通过dmesg查看}
+\subsubsection{通过dmesg查看}
 上面的map实际上是BISO初始化的分布，在系统初始化过程中对其中的一部分进行了修改，如图所示。
 
 \includegraphics[scale=0.25]{images/e820}
+
+\subsubsection{setup\_memory\_map}
+在函数setup\_arch当中，setup\_memory\_map函数被调用，之后e820的memmap就做出了如图片当中的修改。它的内部调用了函数sanitize\_e820\_map，因为e820的某些memmap可能存在重叠，调用它的目的正是将这些重叠区域去掉。如果使用qemu来模拟机器是遇不到这种情况的。因此，我们直接避开他。
+
 
 \subsection{通过early\_res分配内存}
 e820仅仅保存了内存的布局信息，为了分配内存还需要做出进一步的努力以帮助系统记录那些内存被占用而那些内存仍可以被使用。在bootmem启动之前，承担这个责任的是early\_res，它与e820同样定义在文件arch/x86/kerenl/e820.c当中。结构体early\_res和它的一个全局数组early\_res便是记录内存分配信息的容器。

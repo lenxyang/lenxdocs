@@ -2,16 +2,10 @@
 filenametemplate "%j%c.eps";
 
 beginfig(1);
-a = b = 50;
-z1 = (0, b);
-z2 = (a, b);
-z3 = (2a, b);
-z4 = (0, 0);
-z5 = (a, 0);
-z6 = (2a, 0);
-pickup pencircle scaled 4bp;
-draw z1;
-draw z2;
-
-fill z1--z2--z6--cycle
+pickup pencircle scaled 2mm;
+path p ; p := unitsquare scaled 2cm ;
+draw p withcolor .625white;
+pair p1 ; p1 := .5[llcorner p, lrcorner p];
+pair p2 ; p2 := .5[llcorner p, ulcorner p];
+draw p2;
 endfig;
