@@ -5,9 +5,32 @@
 \title{gitolite 安装及配置}
 \maketitle
 \section{快速安装}
+\subsection{创建账户}
+\begin{lstlisting}[language=bash]
+gitolite 可以部署在单独的用户下，此用户不需要通过 shell 访问。因此为 gitolite 创建一个单独的用户是比较安全的。
+# 创建用户sudo adduser \
+  --system \
+  --shell /bin/bash \
+  --gecos 'git version control' \
+  --group \
+  --disabled-password \
+  --home /home/git git
+ 
+# get the software
+git clone git://github.com/sitaramc/gitolite
+ 
+# install it
+gitolite/install -ln
+ 
+# setup the initial repos with your key
+# 此处需要注意： your-name.pub 最好放在 $(HOME)/.ssh 下，否则可能出现错误
+# 此外，如果通过 scp 拷贝而来，最好用 ssh-keygen -l -f 测试是否合法，它经常会报 Permission Denied 错误
+# chmod 无法修正，可以新建个文件拷贝内容的方式来调整
+gitolite setup -pk your-name.pub
+\end{lstlisting}
 
 \subsection{checkout 项目管理 repository}
-gitolite 与 gitosis 类似，都采用一个特殊的repository 来管理项目，这个项目的名称是 gitolite-admin.git。 需要注意的是一定要使用之前添加的公钥的用户来 clone 这个项目，第一clone 项目的时候，仅仅这一个用户是可用的。
+gitolite 与 gitosis 类似，都采用一个特殊的repository 来管理项目，这个项目的名称是 gitolite-admin.git。 需要注意的是一定要使用之前添加的公钥的用户来 clone 这个项目，第一次 clone 项目的时候，仅仅这一个用户是可用的。
 \begin{lstlisting}[language=bash]
 $ git clone git@host:gitolite-admin.git
  
@@ -17,5 +40,112 @@ remote: Compressing objects: 100% (4/4), done.
 remote: Total 6 (delta 0), reused 0 (delta 0)
 Receiving objects: 100% (6/6), done.
 \end{lstlisting}
+
+\section{创建项目及权限管理}
+\subsection{添加用户}
+在gitolite-admin.git下的keydir用于保存用户的公钥，gitolite 推荐的方式是为每一个用户创建一个目录，它所有的公钥全部存储在目录指定目录下（注意：此目录必须与用户名一致）。此外gitolite对用户公钥的文件名的命名也有要求，最好使用一下模式
+\begin{lstlisting}[language=bash]
+  username@machinename.pub
+\end{lstlisting}
+需要注意的是machinename 当中最好不要有 “.“。
+
+\subsection{用户公钥测试}
+gitolite 提供了方便的服务器端命令用于检测公钥是否已经起作用了。在添加完公钥并push代码之后，在 git 服务器上执行：
+\begin{lstlisting}[language=bash]
+$ gitolite sshkeys-lint 
+sshkeys-lint: ==== checking authkeys file:
+sshkeys-lint: ==== checking pubkeys:
+sshkeys-lint: yanglei.pub maps to user yanglei
+sshkeys-lint: yanglei/yanglei@LA.pub maps to user yanglei
+sshkeys-lint: yanglei/yanglei@redhat-yl.pub maps to user yanglei
+\end{lstlisting}
+
+\section{over http/https}
+\subsection{gitweb安装}
+yum install httpd.x86\_64
+
+\subsection{配置 apache}
+\begin{lstlisting}
+suexec -V  \
+    -D AP_DOC_ROOT="/var/www" \ 
+    -D AP_GID_MIN=100  \
+    -D AP_HTTPD_USER="www"  \
+    -D AP_LOG_EXEC="/var/log/httpd/suexec.log"      \
+    -D AP_SAFE_PATH="/usr/local/bin:/usr/bin:/bin"   \
+    -D AP_UID_MIN=500  -D AP_USERDIR_SUFFIX="public_html"
+\end{lstlisting}
+
+\subsubsection{打开80端口}
+\begin{lstlisting}
+iptables -I INPUT -p tcp --dport 80 -j ACCEPT
+iptables -A OUTPUT -p tcp --sport 80 -m state --state ESTABLISHED -j ACCEPT
+iptables-save >  /etc/sysconfig/iptables
+iptables-restore < /etc/sysconfig/iptables
+\end{lstlisting}
+
+\subsubsection{创建虚拟机}
+
+\begin{lstlisting}
+<VirtualHost *:80>
+    # ServerName        git.example.com
+    ServerAlias       git
+    # ServerAdmin       you@example.com
+
+    DocumentRoot /var/www/git
+    <Directory /var/www/git>
+        Options       None
+        AllowOverride None
+        Order         allow,deny
+        Allow         from all
+    </Directory>
+
+    SuexecUserGroup git git
+    ScriptAlias /git/ /var/www/bin/gitolite-suexec-wrapper.sh/
+    ScriptAlias /gitmob/ /var/www/bin/gitolite-suexec-wrapper.sh/
+
+    <Location /git>
+        AuthType Basic
+        AuthName "Git Access"
+        Require valid-user
+        AuthUserFile /etc/httpd/conf/git.passwd
+    </Location>
+</VirtualHost>
+
+\end{lstlisting}
+
+\subsubsection{为用户设置密码}
+\begin{lstlisting}
+htpasswd -c /etc/httpd/conf/git.passwd username
+\end{lstlisting}
+
+\subsubsection{通过 HTTP/HTTPS 访问}
+\begin{lstlisting}
+git clone http://yanglei:passw1r@192.168.11.78/lenxdocs.git
+\end{lstlisting}
+
+\section{gitweb}
+\subsection{权限管理}
+为了能够使 www 用户可以访问 repository， 需要为需要浏览的 repository 加上组访问权限并将 www 加入到 group git
+
+\begin{lstlisting}
+# usermod -a -G git www
+# sudo -u git chown -R g+rx /home/git/repositories/
+\end{lstlisting}
+
+同时还可以更改 /home/git/.gitolite.rc 当中的默认权限配置，使得以后不需要执行 chown.
+
+\section{常见错误}
+\subsection{invalid ssh public key}
+gitolite报这个错误一般并不是因为他真的不是一个valid ssh public key, 而是由于它调用bash 命令"ssh-keygen -l -f ***.pub"失败了。如果单独运行此指令，多半会得到一个Permission Denied 错误。而我们却能通过 vi 更改，读取，删除。这时候就有可能是 selinux 起了一些作用，卸载它或者禁用它就可以修复问题了。
+\section{参考}
+\subsection{clone over http, run git update-server-info on the server}
+\begin{lstlisting}
+git clone http://yanglei:passw1r@192.168.11.78/lenxdocs.git
+Initialized empty Git repository in /home/yanglei/emmet2/lenxdocs/.git/
+fatal: http://yanglei:passw1r@192.168.11.78/lenxdocs.git/info/refs not found: did you run git update-server-info on the server?
+\end{lstlisting}
+\begin{compactenum}
+\item http://gitolite.com/gitolite/gitolite.html
+\end{compactenum}
 
 \end{document}
