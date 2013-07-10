@@ -1,0 +1,21 @@
+\documentclass[a4paper,11pt,twoside,openany]{article}
+
+\input{setting}
+\begin{document}
+\title{gitolite 安装及配置}
+\maketitle
+\section{快速安装}
+
+\subsection{checkout 项目管理 repository}
+gitolite 与 gitosis 类似，都采用一个特殊的repository 来管理项目，这个项目的名称是 gitolite-admin.git。 需要注意的是一定要使用之前添加的公钥的用户来 clone 这个项目，第一clone 项目的时候，仅仅这一个用户是可用的。
+\begin{lstlisting}[language=bash]
+$ git clone git@host:gitolite-admin.git
+ 
+Initialized empty Git repository in /home/yanglei/gitolite-admin/.git/Initialized empty Git repository in /home/yanglei/gitolite-admin/.git/
+remote: Counting objects: 6, done.
+remote: Compressing objects: 100% (4/4), done.
+remote: Total 6 (delta 0), reused 0 (delta 0)
+Receiving objects: 100% (6/6), done.
+\end{lstlisting}
+
+\end{document}
