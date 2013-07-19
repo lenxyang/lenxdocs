@@ -1,0 +1,33 @@
+\documentclass[12pt,a4paper]{article}
+\setlength{\parindent}{2em}          % 首行空两字
+\usepackage{fontspec}                % 设置字体
+\setmainfont{宋体}
+\usepackage{indentfirst}             % 首行缩进
+
+\begin{document}
+\author{yanglei}
+\tableofcontents
+
+
+\section{常用操作}
+\subsection{复制虚拟机}
+每一个VirtualBox的虚拟磁盘vdi文件都有一个UUID， 这个UUID是唯一的，直接复制vdi文件并在同一台电脑上打开一定为失败，好在virtualbox提供了内部命令用来更改虚拟磁盘的 UUID。
+\begin{lstlisting}
+C:\>''Program Files\Sun\VirtualBox\VBoxManage'' internalcommands sethduuid file.vid
+\end{lstlisting}
+
+\subsection{配置使用旧有磁盘的虚拟机}
+如果新建的虚拟机使用旧有的磁盘，那么他的网络设置一般都会出现问题，更改方法如下：
+\begin{lstlisting}
+# 编辑 \etc\network\interface
+# 将 etho0 更改为 eth1
+# The primary network interface
+auto eth1
+iface eth1 inet dhcp
+# 重新启动网络
+/etc/init.d/network restart
+ifconfig --all
+# 网络正常
+\end{lstlisting}
+
+\end{document}

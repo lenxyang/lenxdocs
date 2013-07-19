@@ -130,6 +130,7 @@ git clone http://yanglei:passw1r@192.168.11.78/lenxdocs.git
 \begin{lstlisting}
 # usermod -a -G git www
 # sudo -u git chown -R g+rx /home/git/repositories/
+# sudo -u git chown -R o+rx /home/git/repositories/
 \end{lstlisting}
 
 同时还可以更改 /home/git/.gitolite.rc 当中的默认权限配置，使得以后不需要执行 chown.
